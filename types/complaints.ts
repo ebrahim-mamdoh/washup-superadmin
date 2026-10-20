@@ -1,9 +1,9 @@
-import type { ListParams, Localized, StatusCounts } from "@/types/common";
-import type { AuditLog } from "@/types/audit";
-import type { AdminUser } from "@/types/auth";
-import type { Customer } from "@/types/customers";
-import type { Order } from "@/types/orders";
-import type { Branch, Business } from "@/types/washes";
+import type { ListParams, Localized, StatusCounts } from "./common";
+import type { AuditLog } from "./audit";
+import type { AdminUser } from "./auth";
+import type { Customer } from "./customers";
+import type { Order } from "./orders";
+import type { Branch, Business } from "./washes";
 
 export type ComplaintStatus =
   | "open"

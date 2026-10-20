@@ -120,10 +120,18 @@ export function ReviewCard({ review: r, onHide, onRestore }: ReviewCardProps) {
             استعادة
           </Button>
         ) : (
-          <Button variant="destructive" size="sm" onClick={() => onHide(r)}>
-            <EyeOff />
-            إخفاء
-          </Button>
+          <div className="flex gap-2">
+            {r.reportedByWash ? (
+              <Button variant="outline" size="sm" onClick={() => onRestore(r)}>
+                <Eye />
+                إبقاء
+              </Button>
+            ) : null}
+            <Button variant="destructive" size="sm" onClick={() => onHide(r)}>
+              <EyeOff />
+              إخفاء
+            </Button>
+          </div>
         )}
       </footer>
     </article>

@@ -2,8 +2,8 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { formatNumber } from "@/lib/format";
+import { Button } from "../ui/button";
+import { formatNumber } from "../../lib/format";
 import type { Pagination } from "@/types/common";
 
 type TablePaginationProps = {

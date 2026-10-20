@@ -1,5 +1,5 @@
-import type { Localized } from "@/types/common";
-import type { BranchSettings } from "@/types/washes";
+import type { Localized } from "./common";
+import type { BranchSettings } from "./washes";
 
 export interface CatalogArea {
   id: string;

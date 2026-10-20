@@ -1,9 +1,9 @@
 import type { CSSProperties } from "react";
 import { Check } from "lucide-react";
 
-import { ORDER_STATUS } from "@/lib/constants/labels";
-import { formatDuration, formatTime, formatDate } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { ORDER_STATUS } from "../../lib/constants/labels";
+import { formatDuration, formatTime, formatDate } from "../../lib/format";
+import { cn } from "../../lib/utils";
 import type { TimelineEntry } from "@/types/orders";
 
 const ACTOR: Record<TimelineEntry["byType"], string> = {

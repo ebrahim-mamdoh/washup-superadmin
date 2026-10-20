@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { Menu, Search } from "lucide-react";
 
 import { NotificationsMenu } from "@/components/shared/layout/notifications-menu";
-import { ThemeToggle } from "@/components/shared/layout/theme-toggle";
+import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { UserMenu } from "@/components/shared/layout/user-menu";
 import { Button } from "@/components/ui/button";
 import { ADMIN_NAV, isNavActive } from "@/lib/admin-nav";

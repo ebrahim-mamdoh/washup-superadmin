@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
-import { EmptyState, ErrorState } from "@/components/shared/states";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { EmptyState, ErrorState } from "./states";
+import { Skeleton } from "../ui/skeleton";
+import { cn } from "../../lib/utils";
 import type { SortOrder } from "@/types/common";
 
 export type DataTableColumn<T> = {

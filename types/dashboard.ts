@@ -1,4 +1,4 @@
-import type { Localized } from "@/types/common";
+import type { Localized } from "./common";
 
 export type DashboardPeriod = "today" | "7d" | "30d";
 

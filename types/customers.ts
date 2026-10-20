@@ -1,8 +1,8 @@
-import type { ListParams, StatusCounts } from "@/types/common";
-import type { AuditLog } from "@/types/audit";
-import type { Complaint } from "@/types/complaints";
-import type { OrderListItem } from "@/types/orders";
-import type { Review } from "@/types/reviews";
+import type { ListParams, StatusCounts } from "./common";
+import type { AuditLog } from "./audit";
+import type { Complaint } from "./complaints";
+import type { OrderListItem } from "./orders";
+import type { Review } from "./reviews";
 
 export type CustomerStatus = "active" | "suspended";
 

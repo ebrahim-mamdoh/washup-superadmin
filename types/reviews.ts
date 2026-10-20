@@ -1,4 +1,4 @@
-import type { ListParams, Localized, StatusCounts } from "@/types/common";
+import type { ListParams, Localized, StatusCounts } from "./common";
 
 export type ReviewStatus = "visible" | "hidden";
 
@@ -19,6 +19,9 @@ export interface Review {
   comment: Localized;
   tags: string[];
   reply: string | null;
+  replyAt?: string | null;
+  /** Why the wash reported it to Carzen moderation. */
+  reportReason?: string | null;
   status: ReviewStatus;
   hiddenReason: string | null;
   reportedByWash: boolean;

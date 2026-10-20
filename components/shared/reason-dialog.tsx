@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { ShieldAlert } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "../ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,9 +11,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+} from "../ui/dialog";
+import { Textarea } from "../ui/textarea";
+import { cn } from "../../lib/utils";
 
 export type ReasonPreset = { value: string; label: string };
 

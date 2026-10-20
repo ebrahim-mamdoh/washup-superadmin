@@ -1,9 +1,9 @@
 import { History } from "lucide-react";
 
-import { EmptyState } from "@/components/shared/states";
-import { UserAvatar } from "@/components/shared/user-avatar";
-import { AUDIT_ACTION } from "@/lib/constants/labels";
-import { formatDateTime } from "@/lib/format";
+import { EmptyState } from "./states";
+import { UserAvatar } from "./user-avatar";
+import { AUDIT_ACTION } from "../../lib/constants/labels";
+import { formatDateTime } from "../../lib/format";
 import type { AuditLog } from "@/types/audit";
 
 type AuditTrailProps = {

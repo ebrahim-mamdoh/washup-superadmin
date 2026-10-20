@@ -1,4 +1,4 @@
-import type { ListParams, Localized, StatusCounts } from "@/types/common";
+import type { ListParams, Localized, StatusCounts } from "./common";
 
 export type OfferStatus = "draft" | "scheduled" | "active" | "expired" | "disabled";
 

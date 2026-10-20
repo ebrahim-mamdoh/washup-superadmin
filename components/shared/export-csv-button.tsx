@@ -3,8 +3,8 @@
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { downloadCsv, type CsvColumn } from "@/lib/export-csv";
+import { Button } from "../ui/button";
+import { downloadCsv, type CsvColumn } from "../../lib/export-csv";
 
 type ExportCsvButtonProps<T> = {
   filename: string;

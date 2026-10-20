@@ -1,5 +1,5 @@
-import { initials } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { initials } from "../../lib/format";
+import { cn } from "../../lib/utils";
 
 type UserAvatarProps = {
   name: string | null | undefined;

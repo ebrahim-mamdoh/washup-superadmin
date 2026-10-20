@@ -1,6 +1,6 @@
-import type { ListParams, Localized, StatusCounts } from "@/types/common";
-import type { AuditLog } from "@/types/audit";
-import type { PaymentMethod } from "@/types/orders";
+import type { ListParams, Localized, StatusCounts } from "./common";
+import type { AuditLog } from "./audit";
+import type { PaymentMethod } from "./orders";
 
 export type TransactionStatus = "pending" | "paid" | "refunded" | "settled";
 

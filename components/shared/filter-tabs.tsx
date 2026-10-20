@@ -2,8 +2,8 @@
 
 import type { CSSProperties } from "react";
 
-import { formatNumber } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { formatNumber } from "../../lib/format";
+import { cn } from "../../lib/utils";
 
 export type FilterTabItem<V extends string> = {
   value: V;

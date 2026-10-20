@@ -51,7 +51,7 @@ export function formatDateTime(input: string | Date): string {
 }
 
 /** "منذ 3 أيام" / "بعد ساعتين" style relative labels. */
-export function formatRelative(input: string | Date, from: Date = new Date()): string {
+export function formatRelative(input: string | Date, from: Date = serverNow()): string {
   const diffMs = new Date(input).getTime() - from.getTime();
   const past = diffMs < 0;
   const mins = Math.round(Math.abs(diffMs) / 60000);
@@ -86,10 +86,31 @@ export function ar(text: Localized | null | undefined): string {
 }
 
 /** Days between two ISO dates, for "waiting N days" style badges. */
-export function daysBetween(from: string | Date, to: Date = new Date()): number {
+export function daysBetween(from: string | Date, to: Date = serverNow()): number {
   const a = new Date(from);
   a.setHours(0, 0, 0, 0);
   const b = new Date(to);
   b.setHours(0, 0, 0, 0);
   return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+// ── Server clock calibration ─────────────────────────────────
+// The platform API runs a demo clock (and production servers can differ from
+// the device clock). The axios client feeds the X-Demo-Now header here so every
+// relative label and timer is computed against the server's time.
+
+let serverOffsetMs = 0;
+
+export function setServerNow(iso: string | null | undefined): void {
+  const t = iso ? Date.parse(iso) : Number.NaN;
+  if (!Number.isNaN(t)) serverOffsetMs = t - Date.now();
+}
+
+export function serverNow(): Date {
+  return new Date(Date.now() + serverOffsetMs);
+}
+
+/** Whole minutes elapsed since the given time on the server clock (never negative). */
+export function minutesSince(iso: string | Date): number {
+  return Math.max(0, Math.round((serverNow().getTime() - new Date(iso).getTime()) / 60000));
 }

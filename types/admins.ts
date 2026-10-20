@@ -1,4 +1,4 @@
-import type { AdminRole, AdminStatus } from "@/types/auth";
+import type { AdminRole, AdminStatus } from "./auth";
 
 /** Every module/action key the roles matrix can toggle. */
 export type PermissionKey =

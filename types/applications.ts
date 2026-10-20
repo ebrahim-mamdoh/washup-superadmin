@@ -1,5 +1,5 @@
-import type { ListParams, StatusCounts } from "@/types/common";
-import type { WorkingDay } from "@/types/washes";
+import type { ListParams, StatusCounts } from "./common";
+import type { WorkingDay } from "./washes";
 
 export type ApplicationStatus =
   | "pending"

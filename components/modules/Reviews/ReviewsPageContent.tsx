@@ -184,11 +184,21 @@ export default function ReviewsPageContent() {
       <ReasonDialog
         open={Boolean(restoreTarget)}
         onOpenChange={(open) => !open && setRestoreTarget(null)}
-        title="استعادة التقييم"
-        description="سيظهر التقييم مجددًا في تطبيق العميل ويُعاد احتسابه ضمن تقييم المغسلة والفرع."
-        textLabel="سبب الاستعادة (يُسجل في سجل التدقيق)"
-        textPlaceholder="مثال: تم الإخفاء بالخطأ — التعليق لا يخالف السياسات."
-        confirmLabel="استعادة التقييم"
+        {...(restoreTarget?.status === "visible"
+          ? {
+              title: "إبقاء التقييم وإغلاق البلاغ",
+              description: "يبقى التقييم ظاهرًا ويخرج من قائمة البلاغات، وتصل المغسلة رسالة بقرار المراجعة.",
+              textLabel: "سبب الإبقاء (يُسجل في سجل التدقيق)",
+              textPlaceholder: "مثال: التعليق رأي حقيقي للعميل ولا يخالف السياسات.",
+              confirmLabel: "إبقاء التقييم",
+            }
+          : {
+              title: "استعادة التقييم",
+              description: "سيظهر التقييم مجددًا في تطبيق العميل ويُعاد احتسابه ضمن تقييم المغسلة والفرع.",
+              textLabel: "سبب الاستعادة (يُسجل في سجل التدقيق)",
+              textPlaceholder: "مثال: تم الإخفاء بالخطأ — التعليق لا يخالف السياسات.",
+              confirmLabel: "استعادة التقييم",
+            })}
         isPending={toggle.isPending}
         onConfirm={({ text }) => {
           if (!restoreTarget) return;

@@ -1,10 +1,10 @@
-import type { ListParams, Localized, StatusCounts } from "@/types/common";
-import type { AuditLog } from "@/types/audit";
-import type { Complaint } from "@/types/complaints";
-import type { Payment, Transaction } from "@/types/finance";
-import type { Review } from "@/types/reviews";
-import type { Customer, Vehicle } from "@/types/customers";
-import type { Branch, Business, Staff } from "@/types/washes";
+import type { ListParams, Localized, StatusCounts } from "./common";
+import type { AuditLog } from "./audit";
+import type { Complaint } from "./complaints";
+import type { Payment, Transaction } from "./finance";
+import type { Review } from "./reviews";
+import type { Customer, Vehicle } from "./customers";
+import type { Branch, Business, Staff } from "./washes";
 
 export type OrderStatus =
   | "pending"
@@ -77,6 +77,8 @@ export interface Order {
   cancel: OrderCancel | null;
   flag: "finance_review" | null;
   createdAt: string;
+  /** Set when an end-of-day closing locked this order (spec MG-08). */
+  closedInDayId?: string | null;
 }
 
 export interface OrderListItem extends Order {

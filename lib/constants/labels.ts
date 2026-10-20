@@ -8,7 +8,12 @@ import type { AdminNotificationType } from "@/types/notifications";
 import type { OfferStatus } from "@/types/offers";
 import type { OrderSource, OrderStatus, PaymentMethod, PaymentStatus } from "@/types/orders";
 import type { HideReviewReason } from "@/types/reviews";
-import type { BusinessStatus, StaffRole, SuspendReason } from "@/types/washes";
+import type { BusinessStatus, StaffRole, StaffStatus, SuspendReason } from "@/types/washes";
+import type { VendorNotificationType } from "@/types/vendor/catalog";
+import type { CustomerSegment } from "@/types/vendor/insights";
+import type { OrderAction } from "@/types/vendor/operations";
+import type { ShiftClosingStatus } from "@/types/vendor/team";
+import type { AdminStatus } from "@/types/auth";
 
 /**
  * A tone is any CSS color expression; badges render it at ~12% for the
@@ -242,6 +247,7 @@ export const AUDIT_ACTION: Record<string, string> = {
   update_complaint_status: "تحديث حالة شكوى",
   hide_review: "إخفاء تقييم",
   restore_review: "استعادة تقييم",
+  keep_review: "إبقاء تقييم مُبلغ عنه",
   create_offer: "إنشاء عرض",
   update_offer: "تعديل عرض",
   enable_offer: "تفعيل عرض",
@@ -257,6 +263,42 @@ export const AUDIT_ACTION: Record<string, string> = {
   activate_admin: "تفعيل مسؤول",
   update_roles_matrix: "تعديل الصلاحيات",
   update_settings: "تعديل الإعدادات",
+  // Wash (vendor portal) actions
+  "vendor.login": "دخول بوابة الشركاء",
+  "order.create": "إنشاء طلب",
+  "order.confirm": "تأكيد حجز",
+  "order.check_in": "تسجيل وصول",
+  "order.start": "بدء الخدمة",
+  "order.complete": "إكمال الخدمة",
+  "order.payment": "تحصيل دفعة",
+  "order.cancel": "إلغاء طلب",
+  "order.no_show": "عدم حضور",
+  "order.assign": "تعيين موظف",
+  "order.add_service": "إضافة خدمة",
+  "order.discount": "تطبيق خصم",
+  "order.note": "ملاحظة على طلب",
+  "order.refund": "استرداد مبلغ",
+  "service.create": "إضافة خدمة للقائمة",
+  "service.update": "تعديل خدمة",
+  "service.price_change": "تغيير سعر خدمة",
+  "offer.create": "إنشاء عرض",
+  "offer.update": "تعديل عرض",
+  "offer.enable": "تفعيل عرض",
+  "offer.disable": "إيقاف عرض",
+  "branch.update": "تعديل بيانات فرع",
+  "branch.rules": "تعديل قواعد الحجز",
+  "slot.block": "حجب فترة",
+  "slot.unblock": "إلغاء حجب فترة",
+  "staff.create": "إضافة موظف",
+  "staff.update": "تعديل موظف",
+  "staff.status": "تغيير حالة موظف",
+  "staff.schedule": "تعديل جدول الورديات",
+  "shift.review": "مراجعة وردية",
+  "shift.flag": "تمييز وردية للمتابعة",
+  "day.close": "إغلاق اليوم",
+  "review.reply": "الرد على تقييم",
+  "review.report": "إبلاغ عن تقييم",
+  "settings.update": "تعديل إعدادات المغسلة",
 };
 
 export const AUDIT_ENTITY: Record<string, string> = {
@@ -275,6 +317,8 @@ export const AUDIT_ENTITY: Record<string, string> = {
   admins: "مسؤول",
   roles: "صلاحيات",
   system: "النظام",
+  services: "خدمة",
+  shifts: "وردية",
 };
 
 /** Deep link for an audit row's entity. */
@@ -308,3 +352,61 @@ export function auditEntityHref(entity: string, entityId: string): string | null
       return null;
   }
 }
+
+// ── Shared status maps (used by super-admin and vendor-portal) ──
+
+export const STAFF_STATUS: Record<StaffStatus, StatusMeta> = {
+  active: { label: "نشط", tone: TONES.success },
+  suspended: { label: "موقوف", tone: TONES.danger },
+};
+
+export const ADMIN_STATUS: Record<AdminStatus, StatusMeta> = {
+  active: { label: "نشط", tone: TONES.success },
+  inactive: { label: "موقوف", tone: TONES.neutral },
+};
+
+export const BRANCH_STATUS: Record<"active" | "inactive", StatusMeta> = {
+  active: { label: "نشط", tone: TONES.success },
+  inactive: { label: "متوقف", tone: TONES.neutral },
+};
+
+export const SHIFT_STATUS: Record<ShiftClosingStatus, StatusMeta> = {
+  open: { label: "جارية", tone: TONES.info },
+  submitted: { label: "بانتظار المراجعة", tone: TONES.warning },
+  reviewed: { label: "تمت المراجعة", tone: TONES.success },
+  flagged: { label: "للمتابعة", tone: TONES.danger },
+};
+
+export const CUSTOMER_SEGMENT: Record<CustomerSegment, StatusMeta & { description: string }> = {
+  new: { label: "جديد", tone: TONES.info, description: "زيارة واحدة أو أول زيارة خلال 30 يوم" },
+  returning: { label: "متكرر", tone: TONES.success, description: "زيارتين أو أكثر" },
+  lost: { label: "منقطع", tone: TONES.danger, description: "لا زيارات منذ أكثر من 60 يوم" },
+};
+
+export const VENDOR_NOTIFICATION_TYPE: Record<VendorNotificationType, StatusMeta> = {
+  new_booking: { label: "حجز جديد", tone: TONES.primary },
+  booking_cancelled: { label: "إلغاء حجز", tone: TONES.danger },
+  cash_difference: { label: "فرق نقدية", tone: TONES.danger },
+  high_cancellation: { label: "إلغاءات مرتفعة", tone: TONES.warning },
+  branch_issue: { label: "تنبيه فرع", tone: TONES.warning },
+  daily_summary: { label: "ملخص يومي", tone: TONES.neutral },
+  review: { label: "تقييمات", tone: TONES.violet },
+  platform: { label: "من كارزن", tone: TONES.info },
+  payout: { label: "مستحقات", tone: TONES.success },
+};
+
+/** Primary + secondary order actions as worded for wash staff (spec EM-06). */
+export const ORDER_ACTION: Record<OrderAction, { label: string; tone: Tone }> = {
+  confirm: { label: "تأكيد الحجز", tone: "var(--st-confirmed)" },
+  check_in: { label: "تسجيل الوصول", tone: "var(--st-waiting)" },
+  start: { label: "بدء الخدمة", tone: "var(--st-in_service)" },
+  complete: { label: "إكمال الخدمة", tone: "var(--st-completed)" },
+  collect_payment: { label: "تحصيل الدفع", tone: TONES.success },
+  cancel: { label: "إلغاء الطلب", tone: TONES.danger },
+  no_show: { label: "لم يحضر", tone: TONES.neutral },
+  assign: { label: "تعيين موظف", tone: TONES.primary },
+  add_service: { label: "إضافة خدمة", tone: TONES.aqua },
+  discount: { label: "خصم", tone: TONES.warning },
+  note: { label: "ملاحظة", tone: TONES.neutral },
+  refund: { label: "استرداد", tone: TONES.danger },
+};

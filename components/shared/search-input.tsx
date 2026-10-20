@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Search, X } from "lucide-react";
 
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { cn } from "@/lib/utils";
+import { useDebouncedValue } from "../../hooks/use-debounced-value";
+import { cn } from "../../lib/utils";
 
 type SearchInputProps = {
   value: string;

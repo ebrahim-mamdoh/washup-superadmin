@@ -1,6 +1,6 @@
 import { Star } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 
 type RatingStarsProps = {
   value: number;

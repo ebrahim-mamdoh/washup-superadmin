@@ -1,9 +1,9 @@
-import type { ListParams, Localized, StatusCounts } from "@/types/common";
-import type { AuditLog } from "@/types/audit";
-import type { Complaint } from "@/types/complaints";
-import type { OrderStatus } from "@/types/orders";
-import type { Review } from "@/types/reviews";
-import type { Transaction } from "@/types/finance";
+import type { ListParams, Localized, StatusCounts } from "./common";
+import type { AuditLog } from "./audit";
+import type { Complaint } from "./complaints";
+import type { OrderStatus } from "./orders";
+import type { Review } from "./reviews";
+import type { Transaction } from "./finance";
 
 export type BusinessStatus =
   | "pending"
@@ -40,6 +40,15 @@ export interface BranchSettings {
   reminderMin: number;
 }
 
+/** A time range removed from customer availability (spec MG-05). */
+export interface BlockedSlot {
+  id: string;
+  start: string;
+  end: string;
+  reason: string;
+  createdBy: string;
+}
+
 export interface Branch {
   id: string;
   businessId: string;
@@ -57,6 +66,7 @@ export interface Branch {
   settings: BranchSettings;
   rating: number;
   reviewCount: number;
+  blockedSlots: BlockedSlot[];
 }
 
 export type ServiceType = "primary" | "addon";
@@ -76,6 +86,25 @@ export type StaffRole = "owner" | "manager" | "employee";
 
 export type StaffStatus = "active" | "suspended";
 
+/** Per-person permission toggles (spec 02 §4 wash matrix). */
+export interface StaffPermissions {
+  confirmBooking: boolean;
+  cancelOrder: boolean;
+  closeShift: boolean;
+  editServices: boolean;
+  refund: boolean;
+  collectPayment: boolean;
+  runService: boolean;
+  manageStaff: boolean;
+}
+
+/** Recurring weekly shift: days are 0 (Sunday) … 6 (Saturday). */
+export interface ShiftPattern {
+  start: string;
+  end: string;
+  days: number[];
+}
+
 export interface Staff {
   id: string;
   businessId: string;
@@ -85,6 +114,9 @@ export interface Staff {
   role: StaffRole;
   status: StaffStatus;
   maxDiscountPct: number;
+  permissions: StaffPermissions;
+  scheduledShifts: ShiftPattern[];
+  joinedAt: string;
 }
 
 export interface WashListItem extends Business {

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
-import type { StatusMeta } from "@/lib/constants/labels";
-import { cn } from "@/lib/utils";
+import type { StatusMeta } from "../../lib/constants/labels";
+import { cn } from "../../lib/utils";
 
 type StatusBadgeProps = {
   /** Pass a meta entry from `lib/constants/labels` … */

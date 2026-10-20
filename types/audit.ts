@@ -1,5 +1,5 @@
-import type { ListParams } from "@/types/common";
-import type { ActorType } from "@/types/orders";
+import type { ListParams } from "./common";
+import type { ActorType } from "./orders";
 
 export interface AuditLog {
   id: string;

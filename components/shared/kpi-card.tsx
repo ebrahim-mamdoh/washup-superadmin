@@ -2,9 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
-import { Sparkline } from "@/components/shared/sparkline";
-import { formatPercent } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { Sparkline } from "./sparkline";
+import { formatPercent } from "../../lib/format";
+import { cn } from "../../lib/utils";
 
 type KpiCardProps = {
   label: string;
