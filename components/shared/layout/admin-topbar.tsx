@@ -40,18 +40,22 @@ export function AdminTopbar() {
         <span className="truncate font-medium">{section.label}</span>
       </nav>
 
+      {/* Below sm the search is an icon button, so the bar fits a 320px phone. */}
       <button
         type="button"
         onClick={() => setCommandOpen(true)}
-        className="ms-auto flex h-9 w-full max-w-[340px] cursor-pointer items-center gap-2 rounded-lg border border-input bg-card px-3 text-sm text-muted-foreground transition-colors hover:border-primary/40 focus-visible:ring-3 focus-visible:ring-ring/30 focus-visible:outline-none md:ms-6"
+        aria-label="بحث عن عميل، مغسلة، حجز"
+        className="ms-auto flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-card text-sm text-muted-foreground transition-colors hover:border-primary/40 focus-visible:ring-3 focus-visible:ring-ring/30 focus-visible:outline-none sm:w-full sm:max-w-[340px] sm:shrink sm:justify-start sm:px-3 md:ms-6"
       >
-        <Search className="size-4" />
-        <span className="truncate">بحث عن عميل، مغسلة، حجز…</span>
+        <Search className="size-4 shrink-0" />
+        <span className="hidden truncate sm:inline">بحث عن عميل، مغسلة، حجز…</span>
         <kbd className="num ms-auto hidden rounded-md border bg-muted px-1.5 py-0.5 text-[10px] font-medium sm:block">Ctrl K</kbd>
       </button>
 
-      <div className="flex items-center gap-1">
-        <ThemeToggle />
+      <div className="flex shrink-0 items-center gap-1">
+        <div className="hidden sm:block">
+          <ThemeToggle />
+        </div>
         <NotificationsMenu />
         <div className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden />
         <UserMenu />

@@ -46,6 +46,7 @@ import {
   PAYMENT_STATUS,
   STAFF_ROLE,
   TRANSACTION_STATUS,
+  discountReasonLabel,
 } from "@/lib/constants/labels";
 import { formatDateTime, formatDuration, formatMoney, formatPercent, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -213,7 +214,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
                     <tr>
                       <td colSpan={3} className="px-5 py-1 text-muted-foreground">
                         الخصم <span className="num">({formatPercent(order.discount.pct, 0)})</span>
-                        {order.discount.reason ? <span className="ms-1.5 text-xs">— {order.discount.reason}</span> : null}
+                        {order.discount.reason ? <span className="ms-1.5 text-xs">— {discountReasonLabel(order.discount.reason)}</span> : null}
                       </td>
                       <td className="num px-5 py-1 text-end text-success">− {formatMoney(order.discount.amount, { decimals: true })}</td>
                     </tr>
