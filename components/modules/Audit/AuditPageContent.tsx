@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useAuditLogs } from "@/hooks/use-platform";
 import { useUrlState } from "@/hooks/use-url-state";
 import { AUDIT_ACTION, AUDIT_ENTITY, TONES, auditEntityHref, type StatusMeta } from "@/lib/constants/labels";
-import { formatDateTime, formatRelative } from "@/lib/format";
+import { formatAuditValue, formatDateTime, formatRelative } from "@/lib/format";
 import type { CsvColumn } from "@/lib/export-csv";
 import type { AuditLogListItem } from "@/types/audit";
 import type { ActorType } from "@/types/orders";
@@ -34,7 +34,8 @@ function actorLabel(log: AuditLogListItem) {
   return log.actorType === "system" ? "النظام" : log.actorName;
 }
 
-function truncate(v: string | null, max = 48) {
+function truncate(raw: string | null, max = 48) {
+  const v = formatAuditValue(raw);
   if (!v) return null;
   return v.length > max ? `${v.slice(0, max)}…` : v;
 }
@@ -100,7 +101,7 @@ const COLUMNS: DataTableColumn<AuditLogListItem>[] = [
       const newV = truncate(l.newValue);
       if (!oldV && !newV) return <span className="text-xs text-muted-foreground">—</span>;
       return (
-        <p className="num max-w-72 text-xs leading-relaxed text-muted-foreground" dir="auto" title={[l.oldValue, l.newValue].filter(Boolean).join(" ← ")}>
+        <p className="num max-w-72 text-xs leading-relaxed text-muted-foreground" dir="auto" title={[formatAuditValue(l.oldValue), formatAuditValue(l.newValue)].filter(Boolean).join(" ← ")}>
           {oldV ? <span className="line-through decoration-destructive/50">{oldV}</span> : null}
           {oldV && newV ? <span className="mx-1.5">←</span> : null}
           {newV ? <span className="text-foreground">{newV}</span> : null}
