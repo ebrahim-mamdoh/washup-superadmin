@@ -45,7 +45,7 @@ export function AdminSidebar() {
             </Button>
           </div>
         ) : (
-          <div className="m-3 rounded-xl border border-sidebar-border bg-muted/50 p-3">
+          <div className="m-3 rounded-xl border border-sidebar-border bg-card/80 p-3">
             <p className="text-xs font-semibold">بيئة العرض التجريبي</p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">البيانات وهمية ويمكن إعادة ضبطها من قائمة الحساب.</p>
           </div>
@@ -53,7 +53,7 @@ export function AdminSidebar() {
       </aside>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="right" className="w-[280px] gap-0 p-0">
+        <SheetContent side="right" className="w-[280px] gap-0 bg-sidebar p-0">
           <SheetTitle className="sr-only">القائمة الرئيسية</SheetTitle>
           <div className="flex h-16 items-center border-b px-4">
             <BrandLogo subtitle="لوحة السوبر أدمن" />
