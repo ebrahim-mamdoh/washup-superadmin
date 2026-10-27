@@ -11,6 +11,7 @@ import {
   MessageSquareWarning,
   PauseCircle,
   PencilLine,
+  MapPinned,
   PlayCircle,
   Star,
   Users,
@@ -24,6 +25,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { RatingStars } from "@/components/shared/rating-stars";
 import { ReasonDialog } from "@/components/shared/reason-dialog";
 import { SectionCard } from "@/components/shared/section-card";
+import { LocationsMap } from "@/components/shared/maps/lazy";
 import { StatTile } from "@/components/shared/stat-tile";
 import { DetailSkeleton, EmptyState, ErrorState } from "@/components/shared/states";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -137,6 +139,14 @@ export default function WashDetailsPageContent({ id }: { id: string }) {
         </div>
 
         <TabsContent value="branches" className="grid gap-4 lg:grid-cols-2">
+          {branches.length ? (
+            <SectionCard title="مواقع الفروع" description="انقر على الدبوس لاسم الفرع وفتحه في خرائط Google" icon={<MapPinned />} className="lg:col-span-2">
+              <LocationsMap
+                points={branches.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng, title: b.name.ar, subtitle: b.address.ar }))}
+                className="h-72"
+              />
+            </SectionCard>
+          ) : null}
           {branches.map((b) => (
             <SectionCard
               key={b.id}
