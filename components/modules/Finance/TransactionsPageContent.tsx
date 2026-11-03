@@ -13,6 +13,7 @@ import { FilterTabs } from "@/components/shared/filter-tabs";
 import { ListToolbar } from "@/components/shared/list-toolbar";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
+import { CountryFilter } from "@/components/shared/country-filter";
 import { SelectFilter } from "@/components/shared/select-filter";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { TablePagination } from "@/components/shared/table-pagination";
@@ -73,7 +74,7 @@ function buildColumns(onInvestigate: (t: TransactionListItem) => void): DataTabl
       hideBelow: "md",
       cell: (t) => <span className="block max-w-40 truncate">{t.businessName.ar}</span>,
     },
-    { key: "gross", header: "القيمة", sortKey: "gross", align: "end", cell: (t) => <span className="num font-medium">{formatMoney(t.gross)}</span> },
+    { key: "gross", header: "القيمة", sortKey: "gross", align: "end", cell: (t) => <span className="num font-medium">{formatMoney(t.gross, t.currencySymbol ? { symbol: t.currencySymbol, fractionDigits: t.currencyDecimals ?? 2 } : undefined)}</span> },
     {
       key: "rate",
       header: "النسبة",
@@ -86,14 +87,14 @@ function buildColumns(onInvestigate: (t: TransactionListItem) => void): DataTabl
       header: "العمولة",
       sortKey: "commission",
       align: "end",
-      cell: (t) => <span className="num text-[var(--chart-2)]">{formatMoney(t.commission, { decimals: true })}</span>,
+      cell: (t) => <span className="num text-[var(--chart-2)]">{formatMoney(t.commission, t.currencySymbol ? { symbol: t.currencySymbol, fractionDigits: t.currencyDecimals ?? 2 } : { decimals: true })}</span>,
     },
     {
       key: "net",
       header: "صافي المغسلة",
       sortKey: "net",
       align: "end",
-      cell: (t) => <span className="num font-semibold">{formatMoney(t.netToWash, { decimals: true })}</span>,
+      cell: (t) => <span className="num font-semibold">{formatMoney(t.netToWash, t.currencySymbol ? { symbol: t.currencySymbol, fractionDigits: t.currencyDecimals ?? 2 } : { decimals: true })}</span>,
     },
     {
       key: "method",
@@ -135,11 +136,14 @@ function buildColumns(onInvestigate: (t: TransactionListItem) => void): DataTabl
   ];
 }
 
-function TotalsRow({ totals, count }: { totals: TransactionListMeta["totals"]; count: number }) {
+function TotalsRow({ totals, byCurrency, count }: { totals: TransactionListMeta["totals"]; byCurrency?: TransactionListMeta["totalsByCurrency"]; count: number }) {
+  const groups = byCurrency?.length ? byCurrency : [{ symbol: "ج.م", decimals: 2, gross: totals.gross, commission: totals.commission, netToWash: totals.netToWash }];
+  const join = (pick: (row: (typeof groups)[number]) => number) =>
+    groups.map((row) => formatMoney(pick(row), { symbol: row.symbol, fractionDigits: row.decimals })).join(" · ");
   const items = [
-    { label: "القيمة الإجمالية", value: formatMoney(totals.gross) },
-    { label: "عمولة المنصة", value: formatMoney(totals.commission, { decimals: true }), className: "text-[var(--chart-2)]" },
-    { label: "صافي المغاسل", value: formatMoney(totals.netToWash, { decimals: true }) },
+    { label: "القيمة الإجمالية", value: join((row) => row.gross) },
+    { label: "عمولة المنصة", value: join((row) => row.commission), className: "text-[var(--chart-2)]" },
+    { label: "صافي المغاسل", value: join((row) => row.netToWash) },
   ];
   return (
     <div className="flex flex-col gap-2 border-t border-border bg-muted/50 px-5 py-3 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -172,6 +176,7 @@ export default function TransactionsPageContent() {
     sort: "date",
     order: "desc",
     page: 1,
+    country: "all",
   });
   const [sheet, setSheet] = useState<{ id: string | null; open: boolean }>({ id: null, open: false });
 
@@ -182,6 +187,7 @@ export default function TransactionsPageContent() {
     sort: state.sort,
     order: state.order as "asc" | "desc",
     page: state.page,
+    country: state.country,
   });
   const washes = useWashes({ per_page: 100, sort: "name", order: "asc" });
 
@@ -190,7 +196,7 @@ export default function TransactionsPageContent() {
   const filteredWash = state.washId !== "all" ? washOptions.find((w) => w.value === state.washId) : undefined;
   const investigate = (t: TransactionListItem) => setSheet({ id: t.id, open: true });
   const columns = buildColumns(investigate);
-  const hasFilters = state.filter !== "all" || state.washId !== "all" || Boolean(state.search);
+  const hasFilters = state.filter !== "all" || state.washId !== "all" || state.country !== "all" || Boolean(state.search);
 
   return (
     <div className="space-y-6">
@@ -243,15 +249,18 @@ export default function TransactionsPageContent() {
           }
           search={<SearchInput value={state.search} onChange={(search) => setState({ search })} placeholder="ابحث برقم الحجز أو المغسلة" />}
           filters={
-            <SelectFilter
-              aria-label="المغسلة"
-              icon={<Store className="size-4" />}
-              value={state.washId}
-              onChange={(washId) => setState({ washId })}
-              allLabel="كل المغاسل"
-              options={filteredWash || state.washId === "all" ? washOptions : [...washOptions, { value: state.washId, label: state.washId }]}
-              className="min-w-44"
-            />
+            <>
+              <CountryFilter value={state.country} onChange={(country) => setState({ country })} />
+              <SelectFilter
+                aria-label="المغسلة"
+                icon={<Store className="size-4" />}
+                value={state.washId}
+                onChange={(washId) => setState({ washId })}
+                allLabel="كل المغاسل"
+                options={filteredWash || state.washId === "all" ? washOptions : [...washOptions, { value: state.washId, label: state.washId }]}
+                className="min-w-44"
+              />
+            </>
           }
         />
         <DataTable
@@ -272,14 +281,14 @@ export default function TransactionsPageContent() {
             description:
               state.filter === "discrepancy" ? "كل مبالغ التحصيل مطابقة لفواتير الحجوزات." : "جرّب حالة أو مغسلة أخرى أو امسح كلمة البحث.",
             action: hasFilters ? (
-              <Button variant="outline" size="sm" onClick={() => setState({ filter: "all", washId: "all", search: "" })}>
+              <Button variant="outline" size="sm" onClick={() => setState({ filter: "all", washId: "all", search: "", country: "all" })}>
                 مسح الفلاتر
               </Button>
             ) : undefined,
           }}
           footer={
             <>
-              {data && data.items.length ? <TotalsRow totals={data.meta.totals} count={data.pagination.total} /> : null}
+              {data && data.items.length ? <TotalsRow totals={data.meta.totals} byCurrency={data.meta.totalsByCurrency} count={data.pagination.total} /> : null}
               <TablePagination pagination={data?.pagination} onPageChange={(page) => setState({ page }, { resetPage: false })} />
             </>
           }

@@ -30,10 +30,15 @@ const PERIOD_DAYS: Record<FinancePeriod, number> = { today: 1, "7d": 7, "30d": 3
  */
 const TXN_ITEM = (q: Q) => q`
   select ${q.unsafe(TRANSACTION_COLS)}, coalesce(bz.name, '{"ar":"—","en":"—"}'::jsonb) as "businessName",
-         coalesce(o.number, '—') as "orderNumber", o.payment_method as "paymentMethod", p.amount as "collectedAmount"
+         coalesce(o.number, '—') as "orderNumber", o.payment_method as "paymentMethod", p.amount as "collectedAmount",
+         coalesce(c.currency_symbol ->> 'ar', 'ج.م') as "currencySymbol",
+         coalesce(c.currency_decimals, 2)::int as "currencyDecimals"
   from public.transactions t
   left join public.businesses bz on bz.id = t.business_id
   left join public.orders o on o.id = t.order_id
+  left join public.branches br on br.id = o.branch_id
+  left join public.areas ar on ar.id = br.area_id
+  left join public.countries c on c.code = ar.country_code
   left join lateral (
     select p.amount from public.payments p where p.order_id = t.order_id order by p.collected_at, p.id limit 1) p on true`;
 
@@ -97,6 +102,36 @@ export const financeRoutes = [
         limit 6`,
     ]);
 
+    const [refundsByCurrency, payoutsByCurrency] = await Promise.all([
+      sql<{ code: string; symbol: string; decimals: number; amount: number }[]>`
+        select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
+               coalesce(sum(o.total), 0) as amount
+        from public.orders o
+        join public.branches br on br.id = o.branch_id
+        join public.areas ar on ar.id = br.area_id
+        join public.countries c on c.code = ar.country_code
+        where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.payment_status = 'refunded' and ${countryOnOrder}
+        group by c.code, c.currency_symbol, c.currency_decimals, c.sort_order
+        order by c.sort_order, c.code`,
+      sql<{ code: string; symbol: string; decimals: number; due: number }[]>`
+        select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
+               coalesce(sum(po.amount_due - po.amount_paid), 0) as due
+        from public.payouts po
+        join lateral (
+          select ar.country_code
+          from public.branches br
+          join public.areas ar on ar.id = br.area_id
+          where br.business_id = po.business_id
+            ${country && country !== "ALL" ? sql`and ar.country_code = ${country}` : sql``}
+          order by br.id
+          limit 1
+        ) loc on true
+        join public.countries c on c.code = loc.country_code
+        where po.status = 'due'
+        group by c.code, c.currency_symbol, c.currency_decimals, c.sort_order
+        order by c.sort_order, c.code`,
+    ]);
+
     const byCurrency = await sql<{ code: string; symbol: string; decimals: number; gmv: number; commission: number; orders: number }[]>`
       select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
              coalesce(sum(o.total), 0) as gmv,
@@ -133,6 +168,8 @@ export const financeRoutes = [
       })),
       topWashes: topWashes.map((w) => ({ ...w, commission: round2(w.commission) })),
       byCurrency: byCurrency.map((c) => ({ ...c, commission: round2(c.commission) })),
+      refundsByCurrency,
+      payoutsByCurrency,
     };
     return ok(overview);
   }),
@@ -141,11 +178,13 @@ export const financeRoutes = [
     const sql = db();
     const filter = query.get("filter");
     const washId = query.get("washId");
+    const country = query.get("country")?.trim().toUpperCase() || "";
     const search = searchPattern(query);
 
     const base = sql`
       ${TXN_ITEM(sql)}
       where true
+        ${country && country !== "ALL" ? sql`and ar.country_code = ${country}` : sql``}
         ${washId && washId !== "all" ? sql`and t.business_id = ${washId}` : sql``}
         ${search ? sql`and (o.number ilike ${search} or bz.name ->> 'ar' ilike ${search} or bz.name ->> 'en' ilike ${search} or t.id ilike ${search})` : sql``}`;
     const where =
@@ -155,7 +194,7 @@ export const financeRoutes = [
           ? sql`where w.status = ${filter}`
           : sql``;
 
-    const [countRows, [{ discrepancy }], [totals]] = await Promise.all([
+    const [countRows, [{ discrepancy }], [totals], totalsByCurrency] = await Promise.all([
       sql<{ k: string; n: number }[]>`with w as (${base}) select w.status::text as k, count(*)::int as n from w group by w.status`,
       sql<{ discrepancy: number }[]>`with w as (${base}) select count(*)::int as discrepancy from w where w.flag = 'discrepancy'`,
       sql<{ total: number; gross: number; commission: number; netToWash: number }[]>`
@@ -163,6 +202,14 @@ export const financeRoutes = [
         select count(*)::int as total, coalesce(sum(w.gross), 0) as gross, coalesce(sum(w.commission), 0) as commission,
                coalesce(sum(w."netToWash"), 0) as "netToWash"
         from w ${where}`,
+      sql<{ symbol: string; decimals: number; gross: number; commission: number; netToWash: number }[]>`
+        with w as (${base})
+        select w."currencySymbol" as symbol, w."currencyDecimals"::int as decimals,
+               coalesce(sum(w.gross), 0) as gross, coalesce(sum(w.commission), 0) as commission,
+               coalesce(sum(w."netToWash"), 0) as "netToWash"
+        from w ${where}
+        group by w."currencySymbol", w."currencyDecimals"
+        order by w."currencySymbol"`,
     ]);
     const sort = orderBy(
       sql,
@@ -179,6 +226,7 @@ export const financeRoutes = [
       meta: {
         counts: { ...countsOf(countRows, TXN_STATUSES), discrepancy },
         totals: { gross: totals.gross, commission: round2(totals.commission), netToWash: round2(totals.netToWash) },
+        totalsByCurrency: totalsByCurrency.map((c) => ({ ...c, commission: round2(c.commission), netToWash: round2(c.netToWash) })),
       },
     });
   }),
@@ -236,17 +284,30 @@ export const financeRoutes = [
     return ok(txn, "تم تعليم الفرق كمُراجَع");
   }),
 
-  route("GET", "/admin/finance/commission", async () => {
+  route("GET", "/admin/finance/commission", async ({ query }) => {
     const sql = db();
     const from = daysAgo(29).toISOString();
+    const country = query.get("country")?.trim().toUpperCase() || "";
     const [defaultPct, washes] = await Promise.all([
       defaultCommissionPct(sql),
-      sql<{ id: string; name: CommissionSettings["washes"][number]["name"]; commissionRate: number | null; gmv30d: number }[]>`
+      sql<{ id: string; name: CommissionSettings["washes"][number]["name"]; commissionRate: number | null; gmv30d: number; currencySymbol: string; currencyDecimals: number }[]>`
         select b.id, b.name, b.commission_rate as "commissionRate",
+               coalesce(loc.symbol, 'ج.م') as "currencySymbol",
+               coalesce(loc.decimals, 2)::int as "currencyDecimals",
                coalesce((select sum(o.total) from public.orders o
                          where o.business_id = b.id and o.status = 'completed' and o.payment_status = 'paid' and o.scheduled_at >= ${from}), 0) as "gmv30d"
         from public.businesses b
+        left join lateral (
+          select c.currency_symbol ->> 'ar' as symbol, c.currency_decimals as decimals, ar.country_code
+          from public.branches br
+          join public.areas ar on ar.id = br.area_id
+          join public.countries c on c.code = ar.country_code
+          where br.business_id = b.id
+          order by br.id
+          limit 1
+        ) loc on true
         where b.status <> 'rejected'
+          ${country && country !== "ALL" ? sql`and loc.country_code = ${country}` : sql``}
         order by b.created_at, b.id`,
     ]);
     const settings: CommissionSettings = {
@@ -257,6 +318,8 @@ export const financeRoutes = [
         rate: b.commissionRate ?? defaultPct,
         isOverride: b.commissionRate !== null && b.commissionRate !== defaultPct,
         gmv30d: b.gmv30d,
+        currencySymbol: b.currencySymbol,
+        currencyDecimals: b.currencyDecimals,
       })),
     };
     return ok(settings);
@@ -331,16 +394,29 @@ export const financeRoutes = [
   route("GET", "/admin/finance/payouts", async ({ query }) => {
     const sql = db();
     const status = query.get("status");
+    const country = query.get("country")?.trim().toUpperCase() || "";
     const search = searchPattern(query);
 
     const base = sql`
-      select ${sql.unsafe(PAYOUT_COLS)}, coalesce(bz.name, '{"ar":"—","en":"—"}'::jsonb) as "businessName"
-      from public.payouts po left join public.businesses bz on bz.id = po.business_id
+      select ${sql.unsafe(PAYOUT_COLS)}, coalesce(bz.name, '{"ar":"—","en":"—"}'::jsonb) as "businessName",
+             coalesce(loc.symbol, 'ج.م') as "currencySymbol", coalesce(loc.decimals, 2)::int as "currencyDecimals"
+      from public.payouts po
+      left join public.businesses bz on bz.id = po.business_id
+      left join lateral (
+        select c.currency_symbol ->> 'ar' as symbol, c.currency_decimals as decimals, ar.country_code
+        from public.branches br
+        join public.areas ar on ar.id = br.area_id
+        join public.countries c on c.code = ar.country_code
+        where br.business_id = po.business_id
+        order by br.id
+        limit 1
+      ) loc on true
       where true
+        ${country && country !== "ALL" ? sql`and loc.country_code = ${country}` : sql``}
         ${search ? sql`and (bz.name ->> 'ar' ilike ${search} or bz.name ->> 'en' ilike ${search} or po.reference ilike ${search})` : sql``}`;
     const filter = status && status !== "all" ? sql`where w.status = ${status}` : sql``;
 
-    const [countRows, [totals], [{ total }]] = await Promise.all([
+    const [countRows, [totals], [{ total }], totalsByCurrency] = await Promise.all([
       sql<{ k: string; n: number }[]>`with w as (${base}) select w.status::text as k, count(*)::int as n from w group by w.status`,
       sql<{ due: number; paid: number }[]>`
         with w as (${base})
@@ -348,12 +424,20 @@ export const financeRoutes = [
                coalesce(sum(w."amountPaid"), 0) as paid
         from w`,
       sql<{ total: number }[]>`with w as (${base}) select count(*)::int as total from w ${filter}`,
+      sql<{ symbol: string; decimals: number; due: number; paid: number }[]>`
+        with w as (${base})
+        select w."currencySymbol" as symbol, w."currencyDecimals"::int as decimals,
+               coalesce(sum(w."amountDue" - w."amountPaid") filter (where w.status = 'due'), 0) as due,
+               coalesce(sum(w."amountPaid"), 0) as paid
+        from w
+        group by w."currencySymbol", w."currencyDecimals"
+        order by w."currencySymbol"`,
     ]);
     const sort = orderBy(sql, query, { periodEnd: `w."periodEnd"`, amountDue: `w."amountDue"` }, { key: "periodEnd", order: "desc" }, "w.id");
     const { items, pagination } = await paged(query, total, 15, (limit, offset) =>
       sql<PayoutListItem[]>`with w as (${base}) select * from w ${filter} ${sort} limit ${limit} offset ${offset}`,
     );
-    return ok(items, "OK", { pagination, meta: { counts: countsOf(countRows, ["due", "paid"] as const), totals } });
+    return ok(items, "OK", { pagination, meta: { counts: countsOf(countRows, ["due", "paid"] as const), totals, totalsByCurrency } });
   }),
 
   route("POST", "/admin/finance/payouts/:id/pay", async ({ params, body, admin }) => {

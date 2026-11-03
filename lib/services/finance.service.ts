@@ -32,15 +32,15 @@ export function resolveDiscrepancy(id: string, note: string) {
   return send<Transaction>("post", `/admin/finance/transactions/${id}/resolve`, { note });
 }
 
-export function fetchCommission() {
-  return getData<CommissionSettings>("/admin/finance/commission", undefined, "تعذر تحميل إعدادات العمولة");
+export function fetchCommission(country = "all") {
+  return getData<CommissionSettings>("/admin/finance/commission", { country }, "تعذر تحميل إعدادات العمولة");
 }
 
 export function updateCommission(payload: UpdateCommissionPayload) {
   return send<null>("put", "/admin/finance/commission", payload);
 }
 
-export function fetchPayouts(params: ListParams & { status?: string }) {
+export function fetchPayouts(params: ListParams & { status?: string; country?: string }) {
   return getPaginated<PayoutListItem, PayoutListMeta>("/admin/finance/payouts", params, "تعذر تحميل المدفوعات");
 }
 

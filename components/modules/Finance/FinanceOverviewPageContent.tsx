@@ -98,7 +98,9 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           emphasis
           label="المبالغ المستردة"
           definition="قيمة الحجوزات التي تم استرداد مبلغها للعملاء خلال الفترة."
-          value={formatMoney(data.refunds)}
+          value={(data.refundsByCurrency?.length ? data.refundsByCurrency : [{ symbol: "ج.م", decimals: 2, amount: data.refunds }])
+            .map((c) => formatMoney(c.amount, { symbol: c.symbol, fractionDigits: c.decimals }))
+            .join(" · ")}
           icon={<Undo2 />}
           tone="var(--muted-foreground)"
           hint={data.refunds ? "مستبعدة من إجمالي المبيعات" : "لا استردادات في الفترة"}
@@ -117,7 +119,9 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
         <FinanceMetricCard
           label="متوسط قيمة الحجز"
           definition="إجمالي المبيعات ÷ عدد الحجوزات المدفوعة في الفترة."
-          value={formatMoney(data.averageOrderValue)}
+          value={(data.byCurrency?.length ? data.byCurrency : [{ symbol: "ج.م", decimals: 2, gmv: data.gmv, orders: data.paidOrders }])
+            .map((c) => formatMoney(c.orders ? c.gmv / c.orders : 0, { symbol: c.symbol, fractionDigits: c.decimals }))
+            .join(" · ")}
           icon={<ReceiptText />}
           tone="var(--info)"
           hint="لكل حجز مدفوع"
@@ -125,7 +129,9 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
         <FinanceMetricCard
           label="مستحقات غير مدفوعة"
           definition="المتبقي للمغاسل في الدفعات المستحقة التي لم تُسدد بعد. رصيد حالي لا يتأثر بالفترة."
-          value={formatMoney(data.pendingPayouts)}
+          value={(data.payoutsByCurrency?.length ? data.payoutsByCurrency : [{ symbol: "ج.م", decimals: 2, due: data.pendingPayouts }])
+            .map((c) => formatMoney(c.due, { symbol: c.symbol, fractionDigits: c.decimals }))
+            .join(" · ")}
           icon={<Wallet />}
           tone="var(--warning)"
           hint="رصيد حالي · مدفوعات المغاسل"
@@ -169,10 +175,6 @@ export default function FinanceOverviewPageContent() {
   const [metric, setMetric] = useState<Metric>("gmv");
   const { data, isLoading, isPlaceholderData, error, refetch, isRefetching } = useFinanceOverview(period, state.country);
 
-  if (error && !data) {
-    return <ErrorState message={error.message} onRetry={() => refetch()} isRetrying={isRefetching} />;
-  }
-
   const hasSales = Boolean(data?.series.some((p) => p.gmv > 0));
   const maxTop = data?.topWashes[0]?.gmv || 1;
 
@@ -193,6 +195,7 @@ export default function FinanceOverviewPageContent() {
         }
       />
 
+      {error && !data ? <ErrorState message={error.message} onRetry={() => refetch()} isRetrying={isRefetching} /> : (
       <div className={cn("space-y-6 transition-opacity", isPlaceholderData && "opacity-60")} aria-busy={isLoading || isPlaceholderData}>
         {data ? <MetricGrid data={data} period={period} /> : <MetricGridSkeleton />}
 
@@ -311,6 +314,7 @@ export default function FinanceOverviewPageContent() {
           </SectionCard>
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -57,7 +57,7 @@ export const queryKeys = {
   financeOverview: (period: FinancePeriod, country = "all") => ["finance", "overview", period, country] as const,
   transactions: (params: TransactionListParams) => ["finance", "transactions", params] as const,
   transaction: (id: string) => ["finance", "transaction", id] as const,
-  commission: ["finance", "commission"] as const,
+  commission: (country = "all") => ["finance", "commission", country] as const,
   payouts: (params: ListParams & { status?: string }) => ["finance", "payouts", params] as const,
 
   admins: ["admins"] as const,
