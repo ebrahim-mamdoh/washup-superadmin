@@ -23,10 +23,10 @@ import type {
   UpdateCommissionPayload,
 } from "@/types/finance";
 
-export function useFinanceOverview(period: FinancePeriod) {
+export function useFinanceOverview(period: FinancePeriod, country = "all") {
   return useQuery({
-    queryKey: queryKeys.financeOverview(period),
-    queryFn: () => fetchFinanceOverview(period),
+    queryKey: queryKeys.financeOverview(period, country),
+    queryFn: () => fetchFinanceOverview(period, country),
     placeholderData: keepPreviousData,
   });
 }

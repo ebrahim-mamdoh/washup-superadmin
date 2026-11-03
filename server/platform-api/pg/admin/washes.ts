@@ -64,6 +64,7 @@ export const washRoutes = [
     const sql = db();
     const status = query.get("status");
     const area = query.get("area");
+    const country = query.get("country")?.trim().toUpperCase() || "";
     const search = searchPattern(query);
 
     const base = sql`
@@ -86,7 +87,8 @@ export const washRoutes = [
         from public.complaints c where c.business_id = b.id) cs
       where true
         ${search ? sql`and (b.name ->> 'ar' ilike ${search} or b.name ->> 'en' ilike ${search} or ow.name ilike ${search})` : sql``}
-        ${area && area !== "all" ? sql`and exists (select 1 from public.branches br where br.business_id = b.id and br.area_id = ${area})` : sql``}`;
+        ${area && area !== "all" ? sql`and exists (select 1 from public.branches br where br.business_id = b.id and br.area_id = ${area})` : sql``}
+        ${country && country !== "ALL" ? sql`and exists (select 1 from public.branches br join public.areas ar on ar.id = br.area_id where br.business_id = b.id and ar.country_code = ${country})` : sql``}`;
 
     const filter = status && status !== "all" ? sql`where w.status = ${status}` : sql``;
     const [countRows, [{ total }]] = await Promise.all([
@@ -317,6 +319,7 @@ export const washRoutes = [
     const sql = db();
     const area = query.get("area");
     const status = query.get("status");
+    const country = query.get("country")?.trim().toUpperCase() || "";
     const search = searchPattern(query);
     const [todayStart, todayEnd] = dayBounds(now());
 
@@ -328,6 +331,7 @@ export const washRoutes = [
       where true
         ${search ? sql`and (w.name ->> 'ar' ilike ${search} or w.name ->> 'en' ilike ${search} or w."businessName" ->> 'ar' ilike ${search})` : sql``}
         ${area && area !== "all" ? sql`and w.area = ${area}` : sql``}
+        ${country && country !== "ALL" ? sql`and exists (select 1 from public.areas ar where ar.id = w.area and ar.country_code = ${country})` : sql``}
         ${status === "active" ? sql`and w.active` : status === "inactive" ? sql`and not w.active` : sql``}`;
 
     const [[counts], [{ total }]] = await Promise.all([

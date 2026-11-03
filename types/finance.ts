@@ -78,6 +78,7 @@ export interface FinanceOverview {
   discrepancies: number;
   series: FinanceSeriesPoint[];
   topWashes: { id: string; name: Localized; gmv: number; commission: number; orders: number }[];
+  byCurrency?: { code: string; symbol: string; decimals: number; gmv: number; commission: number; orders: number }[];
 }
 
 export interface CommissionWash {

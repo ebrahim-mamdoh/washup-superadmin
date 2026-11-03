@@ -11,6 +11,8 @@ export const pagesConfig = {
   "/applications": { title: "طلبات الانضمام", description: "مراجعة طلبات انضمام المغاسل" },
   "/applications/[id]": { title: "مراجعة طلب", description: "مراجعة طلب انضمام مغسلة" },
   "/branches": { title: "الفروع", description: "كل فروع المغاسل على المنصة" },
+  "/areas": { title: "المناطق", description: "مناطق الخدمة والدبوس المستخدم لأقرب منطقة" },
+  "/countries": { title: "الدول", description: "الدول المتاحة والعملات والمناطق الزمنية" },
   "/orders": { title: "الحجوزات والطلبات", description: "متابعة كل الحجوزات على المنصة" },
   "/orders/[id]": { title: "تفاصيل الحجز", description: "القصة الكاملة للحجز" },
   "/customers": { title: "العملاء", description: "إدارة حسابات العملاء" },

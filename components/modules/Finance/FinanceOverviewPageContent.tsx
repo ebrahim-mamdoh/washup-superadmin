@@ -27,6 +27,7 @@ import { SectionCard } from "@/components/shared/section-card";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CountryFilter } from "@/components/shared/country-filter";
 import { useFinanceOverview } from "@/hooks/use-finance";
 import { useUrlState } from "@/hooks/use-url-state";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/format";
@@ -63,7 +64,9 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           emphasis
           label="إجمالي المبيعات (GMV)"
           definition="مجموع قيمة الحجوزات المكتملة والمدفوعة خلال الفترة المحددة، قبل خصم عمولة المنصة."
-          value={formatMoney(data.gmv)}
+          value={(data.byCurrency?.length ? data.byCurrency : [{ symbol: "ج.م", decimals: 2, gmv: data.gmv, commission: data.commission }])
+            .map((c) => formatMoney(c.gmv, { symbol: c.symbol, fractionDigits: c.decimals }))
+            .join(" · ")}
           icon={<Banknote />}
           tone="var(--chart-1)"
           hint={`${PERIOD_PHRASE[period]} · ${formatNumber(data.paidOrders)} حجز مدفوع`}
@@ -72,7 +75,9 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           emphasis
           label="إيراد المنصة (العمولة)"
           definition="عمولة المنصة على الحجوزات المدفوعة، محسوبة بنسبة كل مغسلة (الافتراضية أو الخاصة)."
-          value={formatMoney(data.commission, { decimals: true })}
+          value={(data.byCurrency?.length ? data.byCurrency : [{ symbol: "ج.م", decimals: 2, gmv: data.gmv, commission: data.commission }])
+            .map((c) => formatMoney(c.commission, { symbol: c.symbol, fractionDigits: c.decimals }))
+            .join(" · ")}
           icon={<Landmark />}
           tone="var(--chart-2)"
           hint={`نسبة فعلية ${formatPercent(takeRate)} من المبيعات`}
@@ -82,7 +87,9 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           emphasis
           label="أرباح المغاسل (الصافي)"
           definition="إجمالي المبيعات ناقص عمولة المنصة — ما تستحقه المغاسل عن الفترة."
-          value={formatMoney(data.netToWashes, { decimals: true })}
+          value={(data.byCurrency?.length ? data.byCurrency : [{ symbol: "ج.م", decimals: 2, gmv: data.gmv, commission: data.commission }])
+            .map((c) => formatMoney(c.gmv - c.commission, { symbol: c.symbol, fractionDigits: c.decimals }))
+            .join(" · ")}
           icon={<HandCoins />}
           tone="var(--success)"
           hint="بعد خصم العمولة"
@@ -157,10 +164,10 @@ function MetricGridSkeleton() {
 }
 
 export default function FinanceOverviewPageContent() {
-  const [state, setState] = useUrlState({ period: "30d" });
+  const [state, setState] = useUrlState({ period: "30d", country: "all" });
   const period: FinancePeriod = state.period === "today" || state.period === "7d" ? state.period : "30d";
   const [metric, setMetric] = useState<Metric>("gmv");
-  const { data, isLoading, isPlaceholderData, error, refetch, isRefetching } = useFinanceOverview(period);
+  const { data, isLoading, isPlaceholderData, error, refetch, isRefetching } = useFinanceOverview(period, state.country);
 
   if (error && !data) {
     return <ErrorState message={error.message} onRetry={() => refetch()} isRetrying={isRefetching} />;
@@ -176,6 +183,7 @@ export default function FinanceOverviewPageContent() {
         description="إجمالي المبيعات، إيراد المنصة وأرباح المغاسل — مع ما يحتاج متابعة مالية الآن."
         actions={
           <>
+            <CountryFilter value={state.country} onChange={(country) => setState({ country })} />
             <FilterTabs aria-label="الفترة" items={PERIODS} value={period} onChange={(p) => setState({ period: p })} />
             <Button variant="outline" size="lg" render={<Link href="/finance/transactions" />}>
               <Receipt />

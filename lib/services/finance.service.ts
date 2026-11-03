@@ -16,8 +16,8 @@ import type {
   UpdateCommissionPayload,
 } from "@/types/finance";
 
-export function fetchFinanceOverview(period: FinancePeriod) {
-  return getData<FinanceOverview>("/admin/finance/overview", { period }, "تعذر تحميل الملخص المالي");
+export function fetchFinanceOverview(period: FinancePeriod, country = "all") {
+  return getData<FinanceOverview>("/admin/finance/overview", { period, country }, "تعذر تحميل الملخص المالي");
 }
 
 export function fetchTransactions(params: TransactionListParams) {

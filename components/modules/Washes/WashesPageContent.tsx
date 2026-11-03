@@ -10,6 +10,7 @@ import { ListToolbar } from "@/components/shared/list-toolbar";
 import { PageHeader } from "@/components/shared/page-header";
 import { RatingStars } from "@/components/shared/rating-stars";
 import { SearchInput } from "@/components/shared/search-input";
+import { CountryFilter } from "@/components/shared/country-filter";
 import { SelectFilter } from "@/components/shared/select-filter";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { TablePagination } from "@/components/shared/table-pagination";
@@ -100,6 +101,7 @@ export default function WashesPageContent() {
     status: "all",
     search: "",
     area: "all",
+    country: "all",
     sort: "gmv",
     order: "desc",
     page: 1,
@@ -108,6 +110,7 @@ export default function WashesPageContent() {
     status: state.status as BusinessStatus | "all",
     search: state.search,
     area: state.area,
+    country: state.country,
     sort: state.sort,
     order: state.order as "asc" | "desc",
     page: state.page,
@@ -148,6 +151,8 @@ export default function WashesPageContent() {
           }
           search={<SearchInput value={state.search} onChange={(search) => setState({ search })} placeholder="ابحث باسم المغسلة أو المالك" />}
           filters={
+            <>
+            <CountryFilter value={state.country} onChange={(country) => setState({ country })} />
             <SelectFilter
               aria-label="المنطقة"
               icon={<MapPin className="size-4" />}
@@ -156,6 +161,7 @@ export default function WashesPageContent() {
               allLabel="كل المناطق"
               options={Object.entries(AREAS).map(([value, label]) => ({ value, label }))}
             />
+            </>
           }
         />
         <DataTable

@@ -7,7 +7,9 @@ import {
   FileClock,
   FilePlus2,
   History,
+  Globe,
   LayoutDashboard,
+  Map,
   MapPinned,
   MessageSquareWarning,
   Receipt,
@@ -49,6 +51,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/washes", label: "كل المغاسل", icon: Store },
       { href: "/applications", label: "طلبات الانضمام", icon: FilePlus2, badge: "applications" },
       { href: "/branches", label: "الفروع", icon: MapPinned },
+      { href: "/areas", label: "المناطق", icon: Map },
+      { href: "/countries", label: "الدول", icon: Globe },
     ],
   },
   {

@@ -17,7 +17,8 @@ import { useOrders } from "@/hooks/use-orders";
 import { useUrlState } from "@/hooks/use-url-state";
 import { useWashes } from "@/hooks/use-washes";
 import { ORDER_SOURCE, ORDER_STATUS, PAYMENT_METHOD, PAYMENT_STATUS } from "@/lib/constants/labels";
-import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
+import { CountryFilter } from "@/components/shared/country-filter";
+import { formatDateTime, formatMoney, formatNumber, moneyOf } from "@/lib/format";
 import type { CsvColumn } from "@/lib/export-csv";
 import type { OrderListItem, OrderSource, OrderStatus, PaymentStatus } from "@/types/orders";
 
@@ -32,6 +33,7 @@ const DEFAULTS = {
   dateFrom: "",
   dateTo: "",
   search: "",
+  country: "all",
   sort: "scheduledAt",
   order: "desc",
   page: 1,
@@ -96,11 +98,11 @@ const COLUMNS: DataTableColumn<OrderListItem>[] = [
     key: "scheduled",
     header: "الموعد",
     sortKey: "scheduledAt",
-    cell: (o) => <span className="num text-xs whitespace-nowrap text-muted-foreground">{formatDateTime(o.scheduledAt)}</span>,
+    cell: (o) => <span className="num text-xs whitespace-nowrap text-muted-foreground">{formatDateTime(o.scheduledAt, o.branchLocale?.timezone)}</span>,
   },
   { key: "status", header: "الحالة", cell: (o) => <StatusBadge meta={ORDER_STATUS[o.status]} size="sm" /> },
   { key: "payment", header: "الدفع", hideBelow: "lg", cell: (o) => <StatusBadge meta={PAYMENT_STATUS[o.paymentStatus]} size="sm" /> },
-  { key: "total", header: "المبلغ", sortKey: "total", align: "end", cell: (o) => <span className="num font-semibold">{formatMoney(o.total)}</span> },
+  { key: "total", header: "المبلغ", sortKey: "total", align: "end", cell: (o) => <span className="num font-semibold">{formatMoney(o.total, moneyOf(o.branchLocale))}</span> },
 ];
 
 const CSV: CsvColumn<OrderListItem>[] = [
@@ -132,6 +134,7 @@ export default function OrdersPageContent() {
     dateFrom: state.dateFrom,
     dateTo: state.dateTo,
     search: state.search,
+    country: state.country,
     sort: state.sort,
     order: state.order as "asc" | "desc",
     page: state.page,
@@ -150,9 +153,10 @@ export default function OrdersPageContent() {
     state.source !== "all" ||
     state.payment !== "all" ||
     state.washId !== "all" ||
+    state.country !== "all" ||
     Boolean(state.customerId || state.dateFrom || state.dateTo || state.search);
   const clearFilters = () =>
-    setState({ status: "all", source: "all", payment: "all", washId: "all", customerId: "", dateFrom: "", dateTo: "", search: "" });
+    setState({ status: "all", source: "all", payment: "all", washId: "all", customerId: "", dateFrom: "", dateTo: "", search: "", country: "all" });
 
   return (
     <div className="space-y-6">
@@ -216,6 +220,7 @@ export default function OrdersPageContent() {
                 allLabel="كل حالات الدفع"
                 options={Object.entries(PAYMENT_STATUS).map(([value, m]) => ({ value, label: m.label }))}
               />
+              <CountryFilter value={state.country} onChange={(country) => setState({ country })} />
               <DateRangeFilter from={state.dateFrom} to={state.dateTo} onChange={(range) => setState(range)} />
             </>
           }
@@ -261,7 +266,11 @@ export default function OrdersPageContent() {
                       (<span className="num">{formatNumber(data.pagination.total)}</span> حجز بالفلاتر الحالية)
                     </span>
                   </span>
-                  <span className="num text-sm font-bold text-foreground">{formatMoney(data.meta.totalAmount)}</span>
+                  <span className="num text-sm font-bold text-foreground">
+                    {(data.meta.amountsByCurrency?.length ? data.meta.amountsByCurrency : [{ symbol: "ج.م", decimals: 2, amount: data.meta.totalAmount }])
+                      .map((c) => formatMoney(c.amount, { symbol: c.symbol, fractionDigits: c.decimals }))
+                      .join(" · ")}
+                  </span>
                 </div>
                 <TablePagination pagination={data.pagination} onPageChange={(page) => setState({ page }, { resetPage: false })} />
               </>

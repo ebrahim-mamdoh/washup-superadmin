@@ -7,10 +7,10 @@ import { queryKeys } from "@/lib/query-keys";
 import { fetchDashboard } from "@/lib/services/dashboard.service";
 import type { DashboardPeriod } from "@/types/dashboard";
 
-export function useDashboard(period: DashboardPeriod) {
+export function useDashboard(period: DashboardPeriod, country = "all") {
   return useQuery({
-    queryKey: queryKeys.dashboard(period),
-    queryFn: () => fetchDashboard(period),
+    queryKey: queryKeys.dashboard(period, country),
+    queryFn: () => fetchDashboard(period, country),
     placeholderData: keepPreviousData,
     staleTime: CACHE_TTL_LIVE * 1000,
     // KPIs should feel live while the tab is open.

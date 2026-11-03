@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { AREAS } from "@/lib/constants/labels";
+import { CountryFilter } from "@/components/shared/country-filter";
 import { formatMoney, formatNumber, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { DashboardPeriod } from "@/types/dashboard";
@@ -48,9 +49,15 @@ function greeting() {
 
 export default function DashboardPageContent() {
   const [period, setPeriod] = useState<DashboardPeriod>("today");
+  const [country, setCountry] = useState("all");
   const [metric, setMetric] = useState<"gmv" | "commission">("gmv");
   const admin = useAuthStore((s) => s.admin);
-  const { data, isLoading, error, refetch, isFetching } = useDashboard(period);
+  const { data, isLoading, error, refetch, isFetching } = useDashboard(period, country);
+  const moneyText = (kind: "gmv" | "commission", fallback: number) => {
+    const rows = data?.moneyByCurrency;
+    if (!rows?.length) return formatMoney(fallback);
+    return rows.map((r) => formatMoney(r[kind], { symbol: r.symbol, fractionDigits: r.decimals })).join(" · ");
+  };
 
   if (error && !data) {
     return <ErrorState message={error.message} onRetry={() => refetch()} />;
@@ -66,6 +73,7 @@ export default function DashboardPageContent() {
         description="مؤشرات Wash Up اللحظية وما يحتاج تدخلك الآن."
         actions={
           <>
+            <CountryFilter value={country} onChange={setCountry} />
             {data ? (
               <span className="num hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex">
                 <span className="size-1.5 animate-pulse-ring rounded-full bg-success [--tone:var(--success)]" />
@@ -164,7 +172,7 @@ export default function DashboardPageContent() {
                   {m === "gmv" ? "إجمالي المبيعات" : "عمولة المنصة"}
                 </span>
                 <span className="num mt-0.5 block text-base font-bold">
-                  {data ? formatMoney(m === "gmv" ? data.revenueTotals.gmv : data.revenueTotals.commission) : "—"}
+                  {data ? moneyText(m, m === "gmv" ? data.revenueTotals.gmv : data.revenueTotals.commission) : "—"}
                 </span>
               </button>
             ))}

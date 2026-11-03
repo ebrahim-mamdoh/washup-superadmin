@@ -14,7 +14,7 @@ import type {
 } from "@/types/dashboard";
 
 import { daysAgo, now, round2 } from "../../db";
-import { cairoDateParts, cairoLocalToUtc } from "../../vendor/engine";
+import { zoneDateParts, zoneLocalToUtc } from "../../vendor/engine";
 import { ok } from "../../http";
 import { defaultCommissionPct } from "../platform";
 import { route } from "../router";
@@ -60,7 +60,11 @@ interface DayTotals {
  * Per-bucket order totals for [start, end) ranges: bookings, completed,
  * cancelled, paid GMV and platform commission (each wash's current rate).
  */
-function orderTotals(q: Q, starts: string[], ends: string[], pct: number) {
+function orderTotals(q: Q, starts: string[], ends: string[], pct: number, country = "") {
+  const countryOnOrder =
+    country && country !== "ALL"
+      ? q`exists (select 1 from public.branches br join public.areas ar on ar.id = br.area_id where br.id = o.branch_id and ar.country_code = ${country})`
+      : q`true`;
   return q<DayTotals[]>`
     select (count(o.id) filter (where o.status not in ('cancelled', 'no_show')))::int as created,
            (count(o.id) filter (where o.status = 'completed'))::int as completed,
@@ -70,7 +74,7 @@ function orderTotals(q: Q, starts: string[], ends: string[], pct: number) {
                     filter (where o.status = 'completed' and o.payment_status = 'paid'), 0) as commission
     from unnest(${starts}::timestamptz[], ${ends}::timestamptz[]) with ordinality as d(s, e, i)
     left join (public.orders o join public.businesses b on b.id = o.business_id)
-      on o.scheduled_at >= d.s and o.scheduled_at < d.e
+      on o.scheduled_at >= d.s and o.scheduled_at < d.e and ${countryOnOrder}
     group by d.i order by d.i`;
 }
 
@@ -103,14 +107,21 @@ function countsAt(q: Q, ends: string[]) {
 }
 
 /** Current platform counts (no date cut-off: the headline values). */
-function currentCounts(q: Q) {
+function currentCounts(q: Q, country = "") {
+  const scoped = Boolean(country && country !== "ALL");
+  const washCountry = scoped
+    ? q`and exists (select 1 from public.branches br join public.areas ar on ar.id = br.area_id where br.business_id = b.id and ar.country_code = ${country})`
+    : q``;
+  const branchCountry = scoped
+    ? q`and exists (select 1 from public.areas ar where ar.id = br.area_id and ar.country_code = ${country})`
+    : q``;
   return q<Counts[]>`
     select (select count(*)::int from public.customers) as customers,
            (select count(*)::int from public.customers where status = 'active') as "activeCustomers",
-           (select count(*)::int from public.businesses where status <> 'rejected') as "totalWashes",
-           (select count(*)::int from public.businesses where status = 'active') as "activeWashes",
-           (select count(*)::int from public.branches) as "totalBranches",
-           (select count(*)::int from public.branches where active) as "activeBranches",
+           (select count(*)::int from public.businesses b where b.status <> 'rejected' ${washCountry}) as "totalWashes",
+           (select count(*)::int from public.businesses b where b.status = 'active' ${washCountry}) as "activeWashes",
+           (select count(*)::int from public.branches br where true ${branchCountry}) as "totalBranches",
+           (select count(*)::int from public.branches br where br.active ${branchCountry}) as "activeBranches",
            (select count(*)::int from public.wash_applications where status = 'pending') as "pendingApplications"`;
 }
 
@@ -171,16 +182,21 @@ async function buildFunnel(q: Q, from: string, end: string): Promise<DashboardFu
  * orders fold into the first/last hour so the total matches the KPI card), daily
  * otherwise. Buckets are Cairo wall-clock, not the database session timezone.
  */
-async function buildRevenue(q: Q, period: DashboardPeriod, week: DayTotals[], pct: number): Promise<RevenuePoint[]> {
+async function buildRevenue(q: Q, period: DashboardPeriod, week: DayTotals[], pct: number, country = ""): Promise<RevenuePoint[]> {
+  let zone = "Africa/Cairo";
+  if (country && country !== "ALL") {
+    const [row] = await q<{ timezone: string }[]>`select timezone from public.countries where code = ${country}`;
+    if (row?.timezone) zone = row.timezone;
+  }
   if (period === "today") {
-    const parts = cairoDateParts(now());
+    const parts = zoneDateParts(now(), zone);
     const hours = Array.from({ length: Math.max(1, parts.hour - 7) }, (_, i) => 8 + i);
-    const at = (h: number) => cairoLocalToUtc(parts.y, parts.m, parts.day, h, 0).toISOString();
-    const startOfDay = cairoLocalToUtc(parts.y, parts.m, parts.day, 0, 0).toISOString();
-    const endOfDay = cairoLocalToUtc(parts.y, parts.m, parts.day + 1, 0, 0).toISOString();
+    const at = (h: number) => zoneLocalToUtc(zone, parts.y, parts.m, parts.day, h, 0).toISOString();
+    const startOfDay = zoneLocalToUtc(zone, parts.y, parts.m, parts.day, 0, 0).toISOString();
+    const endOfDay = zoneLocalToUtc(zone, parts.y, parts.m, parts.day + 1, 0, 0).toISOString();
     const starts = hours.map((h, i) => (i === 0 ? startOfDay : at(h)));
     const ends = hours.map((h, i) => (i === hours.length - 1 ? endOfDay : at(h + 1)));
-    const rows = await orderTotals(q, starts, ends, pct);
+    const rows = await orderTotals(q, starts, ends, pct, country);
     return hours.map((h, i) => ({
       label: `${h % 12 || 12}${h >= 12 ? "م" : "ص"}`,
       gmv: rows[i].gmv,
@@ -190,7 +206,7 @@ async function buildRevenue(q: Q, period: DashboardPeriod, week: DayTotals[], pc
 
   const days = PERIOD_DAYS[period];
   const { list, starts, ends } = dayRanges(days);
-  const rows = days === week.length ? week : await orderTotals(q, starts, ends, pct);
+  const rows = days === week.length ? week : await orderTotals(q, starts, ends, pct, country);
   return list.map((day, i) => ({
     label: `${day.getDate()}/${day.getMonth() + 1}`,
     gmv: rows[i].gmv,
@@ -331,6 +347,7 @@ export const dashboardRoutes = [
     const sql = db();
     const raw = query.get("period");
     const period: DashboardPeriod = raw === "7d" || raw === "30d" ? raw : "today";
+    const country = query.get("country")?.trim().toUpperCase() || "";
 
     // Day windows from the server clock (never current_date in SQL).
     const week = dayRanges(7);
@@ -341,15 +358,29 @@ export const dashboardRoutes = [
     const pct = await defaultCommissionPct(sql);
 
     const [weekTotals, history, [current], funnel, alerts, topWashes, needsAttention] = await Promise.all([
-      orderTotals(sql, week.starts, week.ends, pct),
+      orderTotals(sql, week.starts, week.ends, pct, country),
       countsAt(sql, week.ends),
-      currentCounts(sql),
+      currentCounts(sql, country),
       buildFunnel(sql, periodFrom, end),
       buildAlerts(sql),
       buildTopWashes(sql, topFrom, end),
       buildAttention(sql, from30, end),
     ]);
-    const revenue = await buildRevenue(sql, period, weekTotals, pct);
+    const moneyByCurrency = await sql<{ code: string; symbol: string; decimals: number; gmv: number; commission: number }[]>`
+      select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
+             coalesce(sum(o.total), 0) as gmv,
+             coalesce(sum(o.total * coalesce(b.commission_rate, ${pct}::numeric) / 100), 0) as commission
+      from public.orders o
+      join public.businesses b on b.id = o.business_id
+      join public.branches br on br.id = o.branch_id
+      join public.areas ar on ar.id = br.area_id
+      join public.countries c on c.code = ar.country_code
+      where o.scheduled_at >= ${periodFrom} and o.scheduled_at < ${end}
+        and o.status = 'completed' and o.payment_status = 'paid'
+        ${country && country !== "ALL" ? sql`and ar.country_code = ${country}` : sql``}
+      group by c.code, c.currency_symbol, c.currency_decimals, c.sort_order
+      order by c.sort_order, c.code`;
+    const revenue = await buildRevenue(sql, period, weekTotals, pct, country);
     const kpis = buildKpis(weekTotals, history, current);
     const kpi = (k: KpiKey) => kpis.find((x) => x.key === k)?.value ?? 0;
 
@@ -363,6 +394,7 @@ export const dashboardRoutes = [
         gmv: revenue.reduce((s, p) => s + p.gmv, 0),
         commission: round2(revenue.reduce((s, p) => s + p.commission, 0)),
       },
+      moneyByCurrency: moneyByCurrency.map((c) => ({ ...c, commission: round2(c.commission) })),
       alerts,
       topWashes,
       needsAttention,

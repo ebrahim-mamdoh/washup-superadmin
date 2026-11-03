@@ -50,7 +50,7 @@ import {
   discountReasonLabel,
   paymentStatusMeta,
 } from "@/lib/constants/labels";
-import { formatDateTime, formatDuration, formatMoney, formatPercent, formatRelative } from "@/lib/format";
+import { formatDateTime, formatDuration, formatMoney, formatPercent, formatRelative, moneyOf } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ActorType } from "@/types/orders";
 
@@ -121,7 +121,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
         description={
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>
-              الموعد <span className="num font-medium text-foreground">{formatDateTime(order.scheduledAt)}</span>
+              الموعد <span className="num font-medium text-foreground">{formatDateTime(order.scheduledAt, order.branchLocale?.timezone)}</span>
             </span>
             <span>
               أُنشئ <span className="num">{formatRelative(order.createdAt)}</span>
@@ -201,7 +201,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
                         />
                       </td>
                       <td className="num px-4 py-3 text-end text-muted-foreground">{formatDuration(item.durationMin)}</td>
-                      <td className="num px-5 py-3 text-end font-semibold">{formatMoney(item.price)}</td>
+                      <td className="num px-5 py-3 text-end font-semibold">{formatMoney(item.price, moneyOf(order.branchLocale))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -210,7 +210,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
                     <td colSpan={3} className="px-5 pt-3 pb-1 text-muted-foreground">
                       المجموع الفرعي
                     </td>
-                    <td className="num px-5 pt-3 pb-1 text-end">{formatMoney(order.subtotal)}</td>
+                    <td className="num px-5 pt-3 pb-1 text-end">{formatMoney(order.subtotal, moneyOf(order.branchLocale))}</td>
                   </tr>
                   {order.discount ? (
                     <tr>
@@ -218,14 +218,14 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
                         الخصم <span className="num">({formatPercent(order.discount.pct, 0)})</span>
                         {order.discount.reason ? <span className="ms-1.5 text-xs">— {discountReasonLabel(order.discount.reason)}</span> : null}
                       </td>
-                      <td className="num px-5 py-1 text-end text-success">− {formatMoney(order.discount.amount, { decimals: true })}</td>
+                      <td className="num px-5 py-1 text-end text-success">− {formatMoney(order.discount.amount, moneyOf(order.branchLocale))}</td>
                     </tr>
                   ) : null}
                   <tr>
                     <td colSpan={3} className="px-5 pt-1 pb-4 font-semibold">
                       الإجمالي
                     </td>
-                    <td className="num px-5 pt-1 pb-4 text-end text-base font-bold">{formatMoney(order.total, { decimals: true })}</td>
+                    <td className="num px-5 pt-1 pb-4 text-end text-base font-bold">{formatMoney(order.total, moneyOf(order.branchLocale))}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -416,7 +416,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
             <div className="divide-y divide-border/60">
               <Row label="طريقة الدفع">{order.paymentMethod ? PAYMENT_METHOD[order.paymentMethod] : "—"}</Row>
               <Row label="قيمة الحجز">
-                <span className="num">{formatMoney(order.total, { decimals: true })}</span>
+                <span className="num">{formatMoney(order.total, moneyOf(order.branchLocale))}</span>
               </Row>
               {payment ? (
                 <>

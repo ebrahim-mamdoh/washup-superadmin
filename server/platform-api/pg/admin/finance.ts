@@ -67,6 +67,11 @@ export const financeRoutes = [
     const from = starts[0];
     const end = ends[ends.length - 1];
     const pct = await defaultCommissionPct(sql);
+    const country = query.get("country")?.trim().toUpperCase() || "";
+    const countryOnOrder =
+      country && country !== "ALL"
+        ? sql`exists (select 1 from public.branches br join public.areas ar on ar.id = br.area_id where br.id = o.branch_id and ar.country_code = ${country})`
+        : sql`true`;
     // Commission uses each wash's current rate (override or platform default), like the mock.
     const rate = sql`coalesce(b.commission_rate, ${pct}::numeric) / 100`;
 
@@ -75,22 +80,36 @@ export const financeRoutes = [
         select coalesce(sum(o.total), 0) as gmv, coalesce(sum(o.total * ${rate}), 0) as commission, count(o.id)::int as orders
         from unnest(${starts}::timestamptz[], ${ends}::timestamptz[]) with ordinality as d(s, e, i)
         left join (public.orders o join public.businesses b on b.id = o.business_id)
-          on o.scheduled_at >= d.s and o.scheduled_at < d.e and o.status = 'completed' and o.payment_status = 'paid'
+          on o.scheduled_at >= d.s and o.scheduled_at < d.e and o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}
         group by d.i order by d.i`,
       sql<{ refunds: number; pendingPayouts: number; discrepancies: number }[]>`
-        select coalesce((select sum(total) from public.orders
-                         where scheduled_at >= ${from} and scheduled_at < ${end} and payment_status = 'refunded'), 0) as refunds,
+        select coalesce((select sum(o.total) from public.orders o
+                         where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.payment_status = 'refunded' and ${countryOnOrder}), 0) as refunds,
                coalesce((select sum(amount_due - amount_paid) from public.payouts where status = 'due'), 0) as "pendingPayouts",
                (select count(*)::int from public.transactions where flag = 'discrepancy') as discrepancies`,
       sql<{ id: string; name: FinanceOverview["topWashes"][number]["name"]; gmv: number; commission: number; orders: number }[]>`
         select b.id, b.name, sum(o.total) as gmv, sum(o.total) * ${rate} as commission, count(*)::int as orders
         from public.orders o join public.businesses b on b.id = o.business_id
-        where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.status = 'completed' and o.payment_status = 'paid'
+        where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}
         group by b.id
         having sum(o.total) > 0
         order by gmv desc, b.id
         limit 6`,
     ]);
+
+    const byCurrency = await sql<{ code: string; symbol: string; decimals: number; gmv: number; commission: number; orders: number }[]>`
+      select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
+             coalesce(sum(o.total), 0) as gmv,
+             coalesce(sum(o.total * ${rate}), 0) as commission,
+             count(*)::int as orders
+      from public.orders o
+      join public.businesses b on b.id = o.business_id
+      join public.branches br on br.id = o.branch_id
+      join public.areas ar on ar.id = br.area_id
+      join public.countries c on c.code = ar.country_code
+      where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}
+      group by c.code, c.currency_symbol, c.currency_decimals
+      order by c.sort_order, c.code`;
 
     const gmv = daily.reduce((s, d) => s + d.gmv, 0);
     const commission = round2(daily.reduce((s, d) => s + d.commission, 0));
@@ -113,6 +132,7 @@ export const financeRoutes = [
         commission: round2(daily[i].commission),
       })),
       topWashes: topWashes.map((w) => ({ ...w, commission: round2(w.commission) })),
+      byCurrency: byCurrency.map((c) => ({ ...c, commission: round2(c.commission) })),
     };
     return ok(overview);
   }),
