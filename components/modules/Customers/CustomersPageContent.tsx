@@ -123,7 +123,7 @@ export default function CustomersPageContent() {
     <div className="space-y-6">
       <PageHeader
         title="العملاء"
-        description="كل حسابات العملاء على تطبيق كارزن — ابحث بالاسم أو الهاتف أو اللوحة، وتابع النشاط والإنفاق."
+        description="كل حسابات العملاء على تطبيق Wash Up — ابحث بالاسم أو الهاتف أو اللوحة، وتابع النشاط والإنفاق."
         actions={<ExportCsvButton filename="carzen-customers" columns={CSV} rows={data?.items} />}
       />
 

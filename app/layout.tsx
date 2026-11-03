@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     default: SITE_NAME,
     template: `%s | ${SITE_NAME}`,
   },
-  description: "لوحة تحكم السوبر أدمن لمنصة كارزن — سوق ونظام تشغيل مغاسل السيارات",
+  description: "لوحة تحكم السوبر أدمن لمنصة Wash Up — سوق ونظام تشغيل مغاسل السيارات",
   // Private back-office: never index.
   robots: { index: false, follow: false },
   icons: { icon: "/brand/icon.png", apple: "/brand/icon.png" },

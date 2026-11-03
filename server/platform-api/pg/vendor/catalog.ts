@@ -31,7 +31,7 @@ function audit(q: Q, actor: VendorActor, action: string, entity: string, entityI
 }
 
 async function canEditServices(q: Q, actor: VendorActor) {
-  return actor.role === "owner" || (await vendorSettingsFor(q, actor.business.id)).managerCanEditServices;
+  return actor.role === "owner" || (actor.role === "manager" && (await vendorSettingsFor(q, actor.business.id)).managerCanEditServices);
 }
 
 function deriveOfferStatus(o: Pick<Offer, "status" | "startAt" | "endAt">): Offer["status"] {
@@ -139,7 +139,7 @@ export const vendorCatalogRoutes = [
         select ${sql.unsafe(SERVICE_COLS)}, br.name as "branchName",
           coalesce(sv.description, case when sv.type = 'addon'
             then '{"ar": "إضافة اختيارية على الخدمة الأساسية.", "en": ""}'::jsonb
-            else '{"ar": "خدمة غسيل بمعايير كارزن.", "en": ""}'::jsonb end) as description,
+            else '{"ar": "خدمة غسيل بمعايير Wash Up.", "en": ""}'::jsonb end) as description,
           us."ordersCount", us."revenue30d"
         from public.services sv
         join public.branches br on br.id = sv.branch_id

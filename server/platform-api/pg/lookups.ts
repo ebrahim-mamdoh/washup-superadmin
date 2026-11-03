@@ -7,7 +7,7 @@ import type { Staff } from "@/types/washes";
 
 import { now } from "../db";
 import { serviceName } from "../lookups";
-import { clockToMin, minutesOfDay, nextActionFor, overdueMinutes } from "../vendor/engine";
+import { cairoDateParts, clockToMin, minutesOfDay, nextActionFor, overdueMinutes } from "../vendor/engine";
 import { staffWhere } from "./entities";
 import type { Q } from "./sql";
 
@@ -63,29 +63,43 @@ export async function toOrderListItems(q: Q, orders: Order[]): Promise<OrderList
 /** Orders → vendor list items (adds staff name, vehicle label, next action, overdue minutes, lock). */
 export async function toVendorItems(q: Q, orders: Order[], at: Date = now()): Promise<VendorOrderListItem[]> {
   const vehicleIds = [...new Set(orders.map((o) => o.vehicleId).filter((x): x is string => Boolean(x)))];
-  const [items, staff, vehicles] = await Promise.all([
+  const branchIds = [...new Set(orders.map((o) => o.branchId))];
+  const [items, staff, vehicles, graces] = await Promise.all([
     toOrderListItems(q, orders),
     staffNames(q, orders.map((o) => o.assignedStaffId)),
     vehicleIds.length
       ? q<{ id: string; label: string }[]>`select id, make || ' ' || model as label from public.vehicles where id = any(${vehicleIds})`
       : Promise.resolve([]),
+    branchIds.length
+      ? q<{ id: string; grace: number }[]>`select id, no_show_grace_min as grace from public.branches where id = any(${branchIds})`
+      : Promise.resolve([]),
   ]);
   const labels = new Map(vehicles.map((v) => [v.id, v.label]));
+  const graceOf = new Map(graces.map((g) => [g.id, g.grace]));
   return items.map((o) => ({
     ...o,
     staffName: (o.assignedStaffId && staff.get(o.assignedStaffId)) || null,
     vehicleLabel: (o.vehicleId && labels.get(o.vehicleId)) || null,
     nextAction: nextActionFor(o),
     overdueMin: overdueMinutes(o, at),
+    noShowGraceMin: graceOf.get(o.branchId) ?? 15,
     locked: Boolean(o.closedInDayId),
   }));
 }
 
-/** Employees/managers of a branch whose scheduled shift covers `at` (spec MG-04: on-shift staff). */
+/** Staff clocked in on the branch, plus those whose weekly pattern covers `at`. */
 export async function onShiftAt(q: Q, branchId: string, at: Date = now()): Promise<Staff[]> {
   const m = minutesOfDay(at);
-  const staff = await staffWhere(q, q`st.branch_id = ${branchId} and st.status = 'active' and st.role <> 'owner'`, q`order by st.id`);
-  return staff.filter((s) =>
-    s.scheduledShifts.some((p) => p.days.includes(at.getDay()) && m >= clockToMin(p.start) && m < clockToMin(p.end, true)),
-  );
+  const weekday = cairoDateParts(at).weekday;
+  const [staff, open] = await Promise.all([
+    staffWhere(q, q`st.branch_id = ${branchId} and st.status = 'active'`, q`order by st.id`),
+    q<{ staffId: string }[]>`
+      select staff_id as "staffId" from public.staff_shifts
+      where branch_id = ${branchId} and review_status = 'open' and actual_end is null`,
+  ]);
+  const openIds = new Set(open.map((r) => r.staffId));
+  return staff.filter((s) => {
+    if (openIds.has(s.id)) return true;
+    return s.role !== "owner" && s.scheduledShifts.some((p) => p.days.includes(weekday) && m >= clockToMin(p.start) && m < clockToMin(p.end, true));
+  });
 }

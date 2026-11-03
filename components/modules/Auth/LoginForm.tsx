@@ -40,7 +40,7 @@ export default function LoginForm() {
     formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: DEMO,
+    defaultValues: process.env.NODE_ENV === "production" ? { email: "", password: "" } : DEMO,
   });
 
   useEffect(() => {

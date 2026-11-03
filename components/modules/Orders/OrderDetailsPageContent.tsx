@@ -46,7 +46,9 @@ import {
   PAYMENT_STATUS,
   STAFF_ROLE,
   TRANSACTION_STATUS,
+  cancelReasonLabel,
   discountReasonLabel,
+  paymentStatusMeta,
 } from "@/lib/constants/labels";
 import { formatDateTime, formatDuration, formatMoney, formatPercent, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -111,7 +113,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
         meta={
           <>
             <StatusBadge meta={ORDER_STATUS[order.status]} live={order.status === "in_service"} />
-            <StatusBadge meta={PAYMENT_STATUS[order.paymentStatus]} />
+            <StatusBadge meta={paymentStatusMeta(order.paymentStatus, order.status)} />
             <StatusBadge meta={ORDER_SOURCE[order.source]} />
             {isFlagged ? <StatusBadge label="قيد المراجعة المالية" tone="var(--info)" /> : null}
           </>
@@ -159,7 +161,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
               تم إلغاء الحجز بواسطة {ACTOR[order.cancel.byType]}
               <span className="num ms-2 text-xs font-normal text-muted-foreground">{formatDateTime(order.cancel.at)}</span>
             </p>
-            <p className="mt-0.5 text-muted-foreground">{order.cancel.reason}</p>
+            <p className="mt-0.5 text-muted-foreground">{cancelReasonLabel(order.cancel.reason)}</p>
           </div>
         </div>
       ) : null}
@@ -410,7 +412,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
             )}
           </SectionCard>
 
-          <SectionCard title="الدفع" icon={<Banknote />} action={<StatusBadge meta={PAYMENT_STATUS[order.paymentStatus]} size="sm" />}>
+          <SectionCard title="الدفع" icon={<Banknote />} action={<StatusBadge meta={paymentStatusMeta(order.paymentStatus, order.status)} size="sm" />}>
             <div className="divide-y divide-border/60">
               <Row label="طريقة الدفع">{order.paymentMethod ? PAYMENT_METHOD[order.paymentMethod] : "—"}</Row>
               <Row label="قيمة الحجز">

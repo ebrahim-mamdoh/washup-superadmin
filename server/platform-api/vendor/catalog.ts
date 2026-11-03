@@ -20,7 +20,7 @@ function audit(db: MockDatabase, actor: VendorActor, action: string, entity: str
 }
 
 function canEditServices(db: MockDatabase, actor: VendorActor) {
-  return actor.role === "owner" || vendorSettingsFor(db, actor.business.id).managerCanEditServices;
+  return actor.role === "owner" || (actor.role === "manager" && vendorSettingsFor(db, actor.business.id).managerCanEditServices);
 }
 
 function deriveOfferStatus(o: Offer): Offer["status"] {
@@ -78,7 +78,7 @@ export const vendorCatalogRoutes = [
         return {
           ...s,
           branchName: branchName(db, s.branchId),
-          description: db.serviceDescriptions[s.id] ?? { ar: s.type === "addon" ? "إضافة اختيارية على الخدمة الأساسية." : "خدمة غسيل بمعايير كارزن.", en: "" },
+          description: db.serviceDescriptions[s.id] ?? { ar: s.type === "addon" ? "إضافة اختيارية على الخدمة الأساسية." : "خدمة غسيل بمعايير Wash Up.", en: "" },
           ordersCount: orders.length,
           revenue30d: orders
             .filter((o) => o.paymentStatus === "paid" && new Date(o.scheduledAt) >= from)

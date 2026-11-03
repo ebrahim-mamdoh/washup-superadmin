@@ -30,7 +30,7 @@ export default function LoginPage() {
               مخصص لمديري النظام فقط
             </p>
             <h1 className="text-4xl leading-tight font-bold text-balance">
-              إدارة سوق ومغاسل كارزن من مكان واحد
+              إدارة سوق ومغاسل Wash Up من مكان واحد
             </h1>
             <p className="text-base leading-relaxed text-white/80">
               راقب أداء المنصة، اعتمد المغاسل الجديدة، وحلّ الشكاوى وتابع المالية — بقرارات موثقة.
@@ -51,7 +51,7 @@ export default function LoginPage() {
           </ul>
         </div>
 
-        <p className="num relative text-xs text-white/60">© 2026 Carzen · Cairo</p>
+        <p className="num relative text-xs text-white/60">© 2026 Wash Up · Cairo</p>
       </section>
 
       <section className="flex flex-col items-center justify-center px-5 py-10 sm:px-10">

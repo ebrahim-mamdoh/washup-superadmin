@@ -327,6 +327,23 @@ export function discountReasonLabel(reason: string): string {
   return reason === "offer" ? "عرض" : reason.startsWith("offer + ") ? `عرض${reason.slice(5)}` : reason;
 }
 
+const CANCEL_REASON: Record<string, string> = {
+  expired_unconfirmed: "اتلغى تلقائيًا لأن المغسلة ما أكدتش في الوقت المحدد",
+  expired_not_started: "أُغلق الطلب لأن الخدمة لم تبدأ بعد تسجيل الوصول",
+  "Cancelled by customer": "ألغاه العميل",
+};
+
+export function cancelReasonLabel(reason: string): string {
+  return CANCEL_REASON[reason] ?? reason;
+}
+
+export function paymentStatusMeta(status: PaymentStatus, orderStatus: OrderStatus): StatusMeta {
+  if (orderStatus === "cancelled" || orderStatus === "no_show") {
+    return { label: "لا يوجد", tone: TONES.neutral };
+  }
+  return PAYMENT_STATUS[status];
+}
+
 export function auditEntityHref(entity: string, entityId: string): string | null {
   switch (entity) {
     case "businesses":
@@ -396,7 +413,7 @@ export const VENDOR_NOTIFICATION_TYPE: Record<VendorNotificationType, StatusMeta
   branch_issue: { label: "تنبيه فرع", tone: TONES.warning },
   daily_summary: { label: "ملخص يومي", tone: TONES.neutral },
   review: { label: "تقييمات", tone: TONES.violet },
-  platform: { label: "من كارزن", tone: TONES.info },
+  platform: { label: "من Wash Up", tone: TONES.info },
   payout: { label: "مستحقات", tone: TONES.success },
 };
 

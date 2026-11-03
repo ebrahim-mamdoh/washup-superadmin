@@ -21,6 +21,13 @@ const nextConfig: NextConfig = {
     ],
   },
 
+  async redirects() {
+    return [
+      { source: "/bookings", destination: "/orders", permanent: false },
+      { source: "/bookings/:path*", destination: "/orders/:path*", permanent: false },
+    ];
+  },
+
   async headers() {
     // Admin data is user-specific and changes constantly — never edge-cache HTML or API.
     const noStore = {

@@ -63,7 +63,7 @@ export default function DashboardPageContent() {
       <PageHeader
         eyebrow={`${greeting()}، ${admin?.name.split(" ")[0] ?? ""} 👋`}
         title="نظرة عامة على المنصة"
-        description="مؤشرات كارزن اللحظية وما يحتاج تدخلك الآن."
+        description="مؤشرات Wash Up اللحظية وما يحتاج تدخلك الآن."
         actions={
           <>
             {data ? (
