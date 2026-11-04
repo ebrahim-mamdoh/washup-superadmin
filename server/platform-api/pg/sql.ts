@@ -19,17 +19,18 @@ type GlobalWithSql = typeof globalThis & { [GLOBAL_KEY]?: Sql };
 
 /**
  * Session mode (pooler port 5432) keeps a Postgres backend for the life of the
- * client. On Vercel each instance was opening up to 5 of those, and the admin
- * pages (about 6 requests at once) filled Supavisor's 20-connection pool, so
- * later requests failed with 500. Transaction mode (port 6543) returns the
- * backend after each query. `max: 1` queues a request's parallel queries on
- * that one client instead of borrowing more backends.
+ * client, which postgres.js needs for parallel queries (`Promise.all`) on one
+ * connection. Transaction mode (6543) returns the backend after the first query
+ * and leaves later ones hanging in ClientRead.
+ *
+ * Keep `max` small (2–3) so many Vercel instances do not exhaust Supavisor's
+ * session pool. Override with DATABASE_POOL_MAX if needed.
  */
 function poolerUrl(raw: string): string {
   try {
     const url = new URL(raw);
-    if (url.hostname.endsWith(".pooler.supabase.com") && (url.port === "5432" || url.port === "")) {
-      url.port = "6543";
+    if (url.hostname.endsWith(".pooler.supabase.com") && url.port === "6543") {
+      url.port = "5432";
     }
     return url.toString();
   } catch {
@@ -42,10 +43,16 @@ function connect(): Sql {
   if (!url) throw new Error("DATABASE_URL is not set (required when CARZEN_DATA_SOURCE=supabase)");
   return postgres(poolerUrl(url), {
     prepare: false,
-    fetch_types: false,
-    max: Number(process.env.DATABASE_POOL_MAX) || 1,
+    // fetch_types must stay enabled: with it false, JS arrays are sent as text
+    // and Postgres rejects them (`22P02 malformed array literal` → 422).
+    max: Number(process.env.DATABASE_POOL_MAX) || 3,
     idle_timeout: 10,
     connect_timeout: 15,
+    max_lifetime: 60 * 5,
+    connection: {
+      // Kill stuck statements so a bad connection is not held forever under max.
+      statement_timeout: 15_000,
+    },
     transform: { undefined: null },
     types: {
       numeric: {
