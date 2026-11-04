@@ -10,7 +10,8 @@ import type { VendorActor } from "../../router";
 import type { Shift } from "../../schema";
 import { defaultPermissions } from "../../seed";
 import { assertClosableDay, cleanShiftPatterns, dayKey, hasManualDiscount, isPlausibleDuration, normalizePhone } from "../../vendor/engine";
-import { createLogin, isLocalAuth, loginNotice } from "../auth";
+import { createLogin, extractTempPassword, isLocalAuth, loginNotice } from "../auth";
+import { isValidPhone, toE164 } from "../phone";
 import { PHONE, auditWhere, dayClosingsWhere, e164, shiftsWhere, staffById, staffWhere } from "../entities";
 import { dayBounds, paged, searchPattern } from "../list";
 import { branchNames, onShiftAt, staffNames } from "../lookups";
@@ -225,27 +226,31 @@ export const vendorTeamRoutes = [
       const role: StaffRole = body.role === "manager" ? "manager" : "employee";
       if (role === "manager") assertOwner(actor, "إضافة مدير فرع");
       const name = requireText(body.name, "name", "الاسم", 3);
-      const phone = normalizePhone(String(body.phone ?? ""));
-      if (phone.length !== 10) throw new MockApiError("رقم موبايل غير صحيح", 422, { phone: ["رقم غير صحيح"] });
-      const [taken] = await t`select 1 from public.staff where phone = ${e164(phone)}`;
+      const phone = toE164(String(body.phone ?? ""));
+      if (!isValidPhone(phone)) throw new MockApiError("رقم موبايل غير صحيح", 422, { phone: ["رقم غير صحيح"] });
+      const [taken] = await t`select 1 from public.staff where phone = ${phone}`;
       if (taken) throw new MockApiError("هذا الرقم مسجل لحساب آخر", 409, { phone: ["مسجل بالفعل"] });
       const cap = Math.min(Number(body.maxDiscountPct ?? 10), actor.role === "owner" ? 50 : actor.staff.maxDiscountPct);
       const maxDiscountPct = Number.isNaN(cap) ? 10 : Math.round(cap);
 
       const [{ id }] = await t<{ id: string }[]>`
         insert into public.staff (business_id, branch_id, name, phone, role, status, max_discount_pct, permissions)
-        values (${actor.business.id}, ${branchId}, ${name}, ${e164(phone)}, ${role}, 'active', ${maxDiscountPct},
+        values (${actor.business.id}, ${branchId}, ${name}, ${phone}, ${role}, 'active', ${maxDiscountPct},
                 ${t.json(asJson(capPermissions(actor, parsePermissions(body.permissions, role))))})
         returning id`;
       await replacePatterns(t, id, [{ start: "09:00", end: "17:00", days: [0, 1, 2, 3, 4, 5, 6] }]);
       await audit(t, actor, "staff.create", "staff", id, branchId, null, `${name} · ${role}`);
-      // Local auth accepts the demo password for every profile; otherwise create the Supabase Auth login and link it.
-      const login = isLocalAuth() ? null : await createLogin({ phone: e164(phone) });
-      if (login && "userId" in login) await t`update public.staff set user_id = ${login.userId} where id = ${id}`;
-      return { ...(await staffById(t, id)), login };
+      return { id, name, phone };
     });
-    const { login, ...staff } = member;
-    return ok(staff, `تمت إضافة ${staff.name} — ${loginNotice(login)}`);
+
+    // Supabase Auth login outside transaction (W11)
+    const login = isLocalAuth() ? null : await createLogin({ phone: member.phone });
+    if (login && "userId" in login) {
+      await db()`update public.staff set user_id = ${login.userId} where id = ${member.id}`;
+    }
+    const staff = await staffById(db(), member.id);
+    const tempPassword = extractTempPassword(login);
+    return ok({ ...staff, ...(tempPassword ? { tempPassword } : {}) }, `تمت إضافة ${staff.name} — ${loginNotice(login)}`);
   }),
 
   vroute("PATCH", "/vendor/staff/:id", async ({ params, body, actor }) => {
@@ -503,7 +508,7 @@ export const vendorTeamRoutes = [
     });
     return ok(
       closing,
-      closing.difference ? `تم إغلاق اليوم بفرق ${closing.difference} ج.م — تم قفل ${closing.ordersLocked} طلب` : `تم إغلاق اليوم وقفل ${closing.ordersLocked} طلب`,
+      closing.difference ? `تم إغلاق اليوم بفرق ${closing.difference} — تم قفل ${closing.ordersLocked} طلب` : `تم إغلاق اليوم وقفل ${closing.ordersLocked} طلب`,
     );
   }),
 ];

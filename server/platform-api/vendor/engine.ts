@@ -1,3 +1,4 @@
+import { toE164 } from "../pg/phone";
 import "server-only";
 
 import type { Localized } from "@/types/common";
@@ -352,14 +353,14 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
       o.status = "completed";
       pushTimeline(o, "completed", actor);
       audit(db, actor, o, "order.complete", from, "completed");
-      return `اكتملت الخدمة — بانتظار الدفع ${o.total} ج.م`;
+      return `اكتملت الخدمة — بانتظار الدفع ${o.total}`;
     }
     case "collect_payment": {
       const method = payload.method;
       if (method !== "cash" && method !== "card") throw new MockApiError("اختر طريقة الدفع", 422);
       if (method === "cash") {
         const received = Number(payload.amountReceived ?? o.total);
-        if (Number.isNaN(received) || received < o.total) throw new MockApiError(`المبلغ المستلم أقل من الإجمالي (${o.total} ج.م)`, 422);
+        if (Number.isNaN(received) || received < o.total) throw new MockApiError(`المبلغ المستلم أقل من الإجمالي (${o.total})`, 422);
       }
       o.paymentStatus = "paid";
       o.paymentMethod = method;
@@ -376,7 +377,7 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
       if (txn) txn.status = "paid";
       audit(db, actor, o, "order.payment", "pending", `paid · ${PAYMENT_LABEL[method]} · ${o.total}`);
       const change = method === "cash" ? Number(payload.amountReceived ?? o.total) - o.total : 0;
-      return change > 0 ? `تم التحصيل — الباقي للعميل ${change} ج.م` : "تم تحصيل المبلغ بنجاح";
+      return change > 0 ? `تم التحصيل — الباقي للعميل ${change}` : "تم تحصيل المبلغ بنجاح";
     }
     case "cancel": {
       const reason = requireReason(payload.reason, "سبب الإلغاء");
@@ -410,7 +411,7 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
       o.items.push({ serviceId: svc.id, name: svc.name, type: "addon", price: svc.price, durationMin: svc.durationMin });
       recomputeTotals(db, o);
       audit(db, actor, o, "order.add_service", oldTotal, `${o.total} (+${svc.name.ar})`);
-      return `تمت إضافة ${svc.name.ar} — الإجمالي ${o.total} ج.م`;
+      return `تمت إضافة ${svc.name.ar} — الإجمالي ${o.total}`;
     }
     case "discount": {
       const reason = requireReason(payload.reason, "سبب الخصم");
@@ -426,7 +427,7 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
       o.discount = withManualDiscount(o, offer ? offerAmount(offer, o.subtotal) : null, manual, payload.discountType === "fixed" ? 0 : value, reason);
       recomputeTotals(db, o);
       audit(db, actor, o, "order.discount", old, o.total, reason);
-      return `تم تطبيق الخصم — الإجمالي الآن ${o.total} ج.م`;
+      return `تم تطبيق الخصم — الإجمالي الآن ${o.total}`;
     }
     case "note": {
       const text = typeof payload.text === "string" ? payload.text.trim() : "";
@@ -443,7 +444,7 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
       const txn = db.transactions.find((t) => t.orderId === o.id);
       if (txn) txn.status = "refunded";
       audit(db, actor, o, "order.refund", "paid", "refunded", reason);
-      return `تم استرداد ${o.total} ج.م للعميل`;
+      return `تم استرداد ${o.total} للعميل`;
     }
   }
 }
@@ -511,13 +512,20 @@ export function prettyPhone(p: string): string {
 export function recognize(db: MockDatabase, businessId: string, plate?: string | null, phone?: string | null): CustomerRecognition {
   let vehicle: Vehicle | null = null;
   let customer: Customer | null = null;
+  // Scope vehicle recognition to the business to protect customer privacy across the platform (W9)
   if (plate && normalizePlate(plate).length >= 3) {
-    vehicle = db.vehicles.find((v) => v.plateNormalized === normalizePlate(plate)) ?? null;
+    const norm = normalizePlate(plate);
+    const hasOrderWithVehicle = (vId: string) => db.orders.some((o) => o.vehicleId === vId && o.businessId === businessId);
+    vehicle = db.vehicles.find((v) => v.plateNormalized === norm && hasOrderWithVehicle(v.id)) ?? null;
     if (vehicle) customer = db.customers.find((c) => c.id === vehicle!.customerId) ?? null;
   }
-  if (!customer && phone && normalizePhone(phone).length >= 10) {
-    customer = db.customers.find((c) => normalizePhone(c.phone) === normalizePhone(phone)) ?? null;
-    if (customer && !vehicle) vehicle = db.vehicles.find((v) => v.customerId === customer!.id && v.isDefault) ?? null;
+  if (!customer && phone) {
+    const normPhone = toE164(phone);
+    const hasOrderWithCustomer = (cId: string) => db.orders.some((o) => o.customerId === cId && o.businessId === businessId);
+    customer = db.customers.find((c) => toE164(c.phone) === normPhone && hasOrderWithCustomer(c.id)) ?? null;
+    if (customer && !vehicle) {
+      vehicle = db.vehicles.find((v) => v.customerId === customer!.id && v.isDefault && db.orders.some((o) => o.vehicleId === v.id && o.businessId === businessId)) ?? null;
+    }
   }
   if (!customer) return { customer: null, vehicle, visits: 0, lastVisitAt: null, usualServiceId: null, usualServiceName: null };
 
@@ -630,7 +638,7 @@ export function createOrder(db: MockDatabase, actor: VendorActor, payload: Creat
     entity: "orders",
     entityId: order.id,
     branchId: branch.id,
-    newValue: `${order.number} · ${isPhone ? "حجز هاتفي" : "حضور مباشر"} · ${order.total} ج.م`,
+    newValue: `${order.number} · ${isPhone ? "حجز هاتفي" : "حضور مباشر"} · ${order.total}`,
   });
   return order;
 }
@@ -769,4 +777,58 @@ export function isOfferReason(reason: string): boolean {
 export function hasManualDiscount(o: Order): boolean {
   if (!o.discount) return false;
   return !isOfferReason(o.discount.reason) || o.discount.reason.includes(" + ");
+}
+
+
+export function roundMoney(n: number, decimals = 2): number {
+  if (Number.isNaN(n) || !Number.isFinite(n)) return 0;
+  const factor = Math.pow(10, decimals);
+  return Math.round(n * factor) / factor;
+}
+
+export function cairoDateParts(d: Date, timeZone: string = "Africa/Cairo"): { y: number; m: number; day: number; weekday: number; hour: number; minute: number } {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const p = Object.fromEntries(fmt.formatToParts(d).map((x) => [x.type, x.value]));
+  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    y: Number(p.year),
+    m: Number(p.month),
+    day: Number(p.day),
+    weekday: weekdayMap[p.weekday] ?? 0,
+    hour: Number(p.hour),
+    minute: Number(p.minute),
+  };
+}
+
+export function cairoDayKey(d: Date | string, timeZone: string = "Africa/Cairo"): string {
+  const p = cairoDateParts(new Date(d), timeZone);
+  return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+}
+
+export function cairoLocalToUtc(y: number, month: number, day: number, hour = 0, minute = 0, timeZone: string = "Africa/Cairo"): Date {
+  const utc = Date.UTC(y, month - 1, day, hour, minute, 0);
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const wallAsUtc = (instant: Date) => {
+    const p = Object.fromEntries(dtf.formatToParts(instant).filter((x) => x.type !== "literal").map((x) => [x.type, x.value]));
+    return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+  };
+  return new Date(utc - (wallAsUtc(new Date(utc)) - utc));
 }

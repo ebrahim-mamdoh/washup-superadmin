@@ -21,6 +21,7 @@ import {
 
 import { FinanceMetricCard } from "@/components/modules/Finance/FinanceMetricCard";
 import { MetricInfo } from "@/components/modules/Finance/MetricInfo";
+import { CountryFilter } from "@/components/shared/country-filter";
 import { FilterTabs } from "@/components/shared/filter-tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
@@ -31,7 +32,7 @@ import { useFinanceOverview } from "@/hooks/use-finance";
 import { useUrlState } from "@/hooks/use-url-state";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { FinanceOverview, FinancePeriod } from "@/types/finance";
+import type { CurrencyOverview, FinanceOverview, FinancePeriod } from "@/types/finance";
 
 // Recharts stays out of the initial bundle.
 const FinanceChart = dynamic(() => import("@/components/modules/Finance/FinanceChart"), {
@@ -56,6 +57,10 @@ const METRIC_META: Record<Metric, { label: string; color: string; description: s
 
 function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePeriod }) {
   const takeRate = data.gmv ? (data.commission / data.gmv) * 100 : 0;
+  const singleCurrency = data.byCurrency && Object.values(data.byCurrency)[0];
+  const sym = singleCurrency?.currencySymbol ?? "ج.م";
+  const dec = singleCurrency?.currencyDecimals ?? 2;
+
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -63,7 +68,7 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           emphasis
           label="إجمالي المبيعات (GMV)"
           definition="مجموع قيمة الحجوزات المكتملة والمدفوعة خلال الفترة المحددة، قبل خصم عمولة المنصة."
-          value={formatMoney(data.gmv)}
+          value={formatMoney(data.gmv, { symbol: sym, fractionDigits: dec })}
           icon={<Banknote />}
           tone="var(--chart-1)"
           hint={`${PERIOD_PHRASE[period]} · ${formatNumber(data.paidOrders)} حجز مدفوع`}
@@ -72,7 +77,7 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           emphasis
           label="إيراد المنصة (العمولة)"
           definition="عمولة المنصة على الحجوزات المدفوعة، محسوبة بنسبة كل مغسلة (الافتراضية أو الخاصة)."
-          value={formatMoney(data.commission, { decimals: true })}
+          value={formatMoney(data.commission, { symbol: sym, fractionDigits: dec })}
           icon={<Landmark />}
           tone="var(--chart-2)"
           hint={`نسبة فعلية ${formatPercent(takeRate)} من المبيعات`}
@@ -82,7 +87,7 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           emphasis
           label="أرباح المغاسل (الصافي)"
           definition="إجمالي المبيعات ناقص عمولة المنصة — ما تستحقه المغاسل عن الفترة."
-          value={formatMoney(data.netToWashes, { decimals: true })}
+          value={formatMoney(data.netToWashes, { symbol: sym, fractionDigits: dec })}
           icon={<HandCoins />}
           tone="var(--success)"
           hint="بعد خصم العمولة"
@@ -91,7 +96,7 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           emphasis
           label="المبالغ المستردة"
           definition="قيمة الحجوزات التي تم استرداد مبلغها للعملاء خلال الفترة."
-          value={formatMoney(data.refunds)}
+          value={formatMoney(data.refunds, { symbol: sym, fractionDigits: dec })}
           icon={<Undo2 />}
           tone="var(--muted-foreground)"
           hint={data.refunds ? "مستبعدة من إجمالي المبيعات" : "لا استردادات في الفترة"}
@@ -110,7 +115,7 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
         <FinanceMetricCard
           label="متوسط قيمة الحجز"
           definition="إجمالي المبيعات ÷ عدد الحجوزات المدفوعة في الفترة."
-          value={formatMoney(data.averageOrderValue)}
+          value={formatMoney(data.averageOrderValue, { symbol: sym, fractionDigits: dec })}
           icon={<ReceiptText />}
           tone="var(--info)"
           hint="لكل حجز مدفوع"
@@ -118,7 +123,7 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
         <FinanceMetricCard
           label="مستحقات غير مدفوعة"
           definition="المتبقي للمغاسل في الدفعات المستحقة التي لم تُسدد بعد. رصيد حالي لا يتأثر بالفترة."
-          value={formatMoney(data.pendingPayouts)}
+          value={formatMoney(data.pendingPayouts, { symbol: sym, fractionDigits: dec })}
           icon={<Wallet />}
           tone="var(--warning)"
           hint="رصيد حالي · مدفوعات المغاسل"
@@ -136,6 +141,104 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
         />
       </div>
     </>
+  );
+}
+
+function MultiCurrencyGrid({ byCurrency, period }: { byCurrency: Record<string, CurrencyOverview>; period: FinancePeriod }) {
+  const entries = Object.entries(byCurrency);
+  if (!entries.length) {
+    return (
+      <EmptyState
+        icon={<Banknote />}
+        title="لا توجد بيانات مالية مسجلة بعد"
+        description="ستظهر مؤشرات كل عملة عند اكتمال الحجوزات أو إنشاء مستحقات."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {entries.map(([currCode, curr]) => {
+        const sym = curr.currencySymbol || currCode;
+        const decimals = curr.currencyDecimals ?? 2;
+        const takeRate = curr.gmv ? (curr.commission / curr.gmv) * 100 : 0;
+        return (
+          <div key={currCode} className="space-y-4 rounded-2xl border border-border/70 bg-card/60 p-5 shadow-xs">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
+                  {currCode}
+                </span>
+                <h3 className="text-sm font-bold text-foreground">
+                  مؤشرات العملة: {currCode} ({sym})
+                </h3>
+              </div>
+              <span className="text-xs text-muted-foreground">{PERIOD_PHRASE[period]}</span>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <FinanceMetricCard
+                emphasis
+                label="إجمالي المبيعات (GMV)"
+                definition="مجموع قيمة الحجوزات المكتملة والمدفوعة خلال الفترة بهذه العملة."
+                value={formatMoney(curr.gmv, { symbol: sym, fractionDigits: decimals })}
+                icon={<Banknote />}
+                tone="var(--chart-1)"
+                hint={`${PERIOD_PHRASE[period]} · ${formatNumber(curr.paidOrders)} حجز`}
+              />
+              <FinanceMetricCard
+                emphasis
+                label="إيراد المنصة (العمولة)"
+                definition="عمولة المنصة على الحجوزات المدفوعة بهذه العملة."
+                value={formatMoney(curr.commission, { symbol: sym, fractionDigits: decimals })}
+                icon={<Landmark />}
+                tone="var(--chart-2)"
+                hint={`نسبة فعلية ${formatPercent(takeRate)} من المبيعات`}
+                href="/finance/commission"
+              />
+              <FinanceMetricCard
+                emphasis
+                label="أرباح المغاسل (الصافي)"
+                definition="إجمالي المبيعات ناقص عمولة المنصة بهذه العملة."
+                value={formatMoney(curr.netToWashes, { symbol: sym, fractionDigits: decimals })}
+                icon={<HandCoins />}
+                tone="var(--success)"
+                hint="بعد خصم العمولة"
+              />
+              <FinanceMetricCard
+                emphasis
+                label="المبالغ المستردة"
+                definition="قيمة الحجوزات المستردة بهذه العملة."
+                value={formatMoney(curr.refunds, { symbol: sym, fractionDigits: decimals })}
+                icon={<Undo2 />}
+                tone="var(--muted-foreground)"
+                hint={curr.refunds ? "مستبعدة من إجمالي المبيعات" : "لا استردادات"}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FinanceMetricCard
+                label="الحجوزات المدفوعة"
+                definition="عدد الحجوزات المكتملة التي تم تحصيل مبلغها خلال الفترة بهذه العملة."
+                value={formatNumber(curr.paidOrders)}
+                icon={<CircleCheckBig />}
+                tone="var(--st-completed)"
+                hint={PERIOD_PHRASE[period]}
+              />
+              <FinanceMetricCard
+                label="مستحقات غير مدفوعة"
+                definition="المتبقي للمغاسل في الدفعات المستحقة بهذه العملة التي لم تُسدد بعد."
+                value={formatMoney(curr.pendingPayouts, { symbol: sym, fractionDigits: decimals })}
+                icon={<Wallet />}
+                tone="var(--warning)"
+                hint="رصيد حالي · مدفوعات المغاسل"
+                href="/finance/payouts"
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -157,10 +260,11 @@ function MetricGridSkeleton() {
 }
 
 export default function FinanceOverviewPageContent() {
-  const [state, setState] = useUrlState({ period: "30d" });
+  const [state, setState] = useUrlState({ period: "30d", country: "all" });
   const period: FinancePeriod = state.period === "today" || state.period === "7d" ? state.period : "30d";
+  const country = state.country || "all";
   const [metric, setMetric] = useState<Metric>("gmv");
-  const { data, isLoading, isPlaceholderData, error, refetch, isRefetching } = useFinanceOverview(period);
+  const { data, isLoading, isPlaceholderData, error, refetch, isRefetching } = useFinanceOverview(period, country);
 
   if (error && !data) {
     return <ErrorState message={error.message} onRetry={() => refetch()} isRetrying={isRefetching} />;
@@ -168,6 +272,9 @@ export default function FinanceOverviewPageContent() {
 
   const hasSales = Boolean(data?.series.some((p) => p.gmv > 0));
   const maxTop = data?.topWashes[0]?.gmv || 1;
+  const singleCurrency = data?.byCurrency && Object.values(data.byCurrency)[0];
+  const defaultSym = singleCurrency?.currencySymbol ?? "ج.م";
+  const defaultDec = singleCurrency?.currencyDecimals ?? 2;
 
   return (
     <div className="space-y-6">
@@ -176,6 +283,7 @@ export default function FinanceOverviewPageContent() {
         description="إجمالي المبيعات، إيراد المنصة وأرباح المغاسل — مع ما يحتاج متابعة مالية الآن."
         actions={
           <>
+            <CountryFilter value={country} onChange={(c) => setState({ country: c })} />
             <FilterTabs aria-label="الفترة" items={PERIODS} value={period} onChange={(p) => setState({ period: p })} />
             <Button variant="outline" size="lg" render={<Link href="/finance/transactions" />}>
               <Receipt />
@@ -186,7 +294,15 @@ export default function FinanceOverviewPageContent() {
       />
 
       <div className={cn("space-y-6 transition-opacity", isPlaceholderData && "opacity-60")} aria-busy={isLoading || isPlaceholderData}>
-        {data ? <MetricGrid data={data} period={period} /> : <MetricGridSkeleton />}
+        {data ? (
+          country === "all" && data.byCurrency && Object.keys(data.byCurrency).length > 0 ? (
+            <MultiCurrencyGrid byCurrency={data.byCurrency} period={period} />
+          ) : (
+            <MetricGrid data={data} period={period} />
+          )
+        ) : (
+          <MetricGridSkeleton />
+        )}
 
         <div className="grid gap-6 xl:grid-cols-3">
           <SectionCard
@@ -212,7 +328,7 @@ export default function FinanceOverviewPageContent() {
                     {METRIC_META[m].label}
                   </span>
                   <span className="num mt-0.5 block text-base font-bold">
-                    {data ? formatMoney(m === "gmv" ? data.gmv : data.commission, { decimals: m === "commission" }) : "—"}
+                    {data ? formatMoney(m === "gmv" ? data.gmv : data.commission, { symbol: defaultSym, fractionDigits: m === "commission" ? defaultDec : 0 }) : "—"}
                   </span>
                 </button>
               ))}
@@ -280,7 +396,7 @@ export default function FinanceOverviewPageContent() {
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center justify-between gap-2">
                           <span className="truncate text-[13px] font-semibold">{w.name.ar}</span>
-                          <span className="num text-[13px] font-semibold">{formatMoney(w.gmv)}</span>
+                          <span className="num text-[13px] font-semibold">{formatMoney(w.gmv, { symbol: defaultSym, fractionDigits: defaultDec })}</span>
                         </span>
                         <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-muted">
                           <span className="block h-full rounded-full bg-[var(--chart-1)]" style={{ width: `${(w.gmv / maxTop) * 100}%` }} />
@@ -288,7 +404,7 @@ export default function FinanceOverviewPageContent() {
                         <span className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
                           <span className="inline-flex items-center gap-1">
                             <BadgePercent className="size-3" />
-                            عمولة <span className="num">{formatMoney(w.commission, { decimals: true })}</span>
+                            عمولة <span className="num">{formatMoney(w.commission, { symbol: defaultSym, fractionDigits: defaultDec })}</span>
                           </span>
                           <span className="num">{formatNumber(w.orders)} حجز</span>
                         </span>

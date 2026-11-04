@@ -23,10 +23,10 @@ import type {
   UpdateCommissionPayload,
 } from "@/types/finance";
 
-export function useFinanceOverview(period: FinancePeriod) {
+export function useFinanceOverview(period: FinancePeriod, country = "all") {
   return useQuery({
-    queryKey: queryKeys.financeOverview(period),
-    queryFn: () => fetchFinanceOverview(period),
+    queryKey: queryKeys.financeOverview(period, country),
+    queryFn: () => fetchFinanceOverview(period, country),
     placeholderData: keepPreviousData,
   });
 }
@@ -54,10 +54,10 @@ export function useResolveDiscrepancy(id: string, onDone?: () => void) {
   });
 }
 
-export function useCommission() {
+export function useCommission(country = "all") {
   return useQuery({
-    queryKey: queryKeys.commission,
-    queryFn: fetchCommission,
+    queryKey: queryKeys.commission(country),
+    queryFn: () => fetchCommission(country),
     staleTime: CACHE_TTL_REFERENCE * 1000,
   });
 }
@@ -69,7 +69,7 @@ export function useUpdateCommission(onDone?: () => void) {
   });
 }
 
-export function usePayouts(params: ListParams & { status?: string }) {
+export function usePayouts(params: ListParams & { status?: string; country?: string }) {
   return useQuery({
     queryKey: queryKeys.payouts(params),
     queryFn: () => fetchPayouts(params),

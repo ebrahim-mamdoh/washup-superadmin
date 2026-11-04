@@ -6,6 +6,7 @@ import { BadgePercent, Info, Lock, RotateCcw, Save, Sparkles, Store } from "luci
 
 import { MetricInfo } from "@/components/modules/Finance/MetricInfo";
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { CountryFilter } from "@/components/shared/country-filter";
 import { PageHeader } from "@/components/shared/page-header";
 import { ReasonDialog } from "@/components/shared/reason-dialog";
 import { SearchInput } from "@/components/shared/search-input";
@@ -54,7 +55,8 @@ function PageSkeleton() {
 }
 
 export default function CommissionPageContent() {
-  const { data, isLoading, error, refetch, isRefetching } = useCommission();
+  const [country, setCountry] = useState("all");
+  const { data, isLoading, error, refetch, isRefetching } = useCommission(country);
   const [defaultEdit, setDefaultEdit] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -133,7 +135,7 @@ export default function CommissionPageContent() {
       header: "مبيعات 30 يوم",
       align: "end",
       hideBelow: "md",
-      cell: (w) => <span className="num">{formatMoney(w.gmv30d)}</span>,
+      cell: (w) => <span className="num">{formatMoney(w.gmv30d, w.currencySymbol ? { symbol: w.currencySymbol, fractionDigits: w.currencyDecimals ?? 2 } : undefined)}</span>,
     },
     {
       key: "current",
@@ -213,6 +215,7 @@ export default function CommissionPageContent() {
       <PageHeader
         title="عمولة المنصة"
         description="النسبة الافتراضية التي تحصل عليها المنصة من كل حجز مدفوع، مع نسب خاصة لمغاسل بعينها عند الحاجة."
+        actions={<CountryFilter value={country} onChange={setCountry} />}
       />
 
       <div className="grid gap-6 xl:grid-cols-3">

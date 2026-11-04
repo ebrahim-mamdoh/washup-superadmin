@@ -18,7 +18,7 @@ export const queryKeys = {
   me: ["auth", "me"] as const,
 
   dashboardRoot: ["dashboard"] as const,
-  dashboard: (period: DashboardPeriod) => ["dashboard", period] as const,
+  dashboard: (period: DashboardPeriod, country = "all") => ["dashboard", period, country] as const,
 
   washesRoot: ["washes"] as const,
   washes: (params: WashListParams) => ["washes", "list", params] as const,
@@ -54,11 +54,11 @@ export const queryKeys = {
   offers: (params: OfferListParams) => ["offers", params] as const,
 
   financeRoot: ["finance"] as const,
-  financeOverview: (period: FinancePeriod) => ["finance", "overview", period] as const,
+  financeOverview: (period: FinancePeriod, country = "all") => ["finance", "overview", period, country] as const,
   transactions: (params: TransactionListParams) => ["finance", "transactions", params] as const,
   transaction: (id: string) => ["finance", "transaction", id] as const,
-  commission: ["finance", "commission"] as const,
-  payouts: (params: ListParams & { status?: string }) => ["finance", "payouts", params] as const,
+  commission: (country = "all") => ["finance", "commission", country] as const,
+  payouts: (params: ListParams & { status?: string; country?: string }) => ["finance", "payouts", params] as const,
 
   admins: ["admins"] as const,
   roles: ["roles"] as const,

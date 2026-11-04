@@ -10,6 +10,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ExportCsvButton } from "@/components/shared/export-csv-button";
 import { FilterTabs } from "@/components/shared/filter-tabs";
 import { ListToolbar } from "@/components/shared/list-toolbar";
+import { CountryFilter } from "@/components/shared/country-filter";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -64,13 +65,13 @@ function buildColumns(onPay: (p: PayoutListItem) => void): DataTableColumn<Payou
         </span>
       ),
     },
-    { key: "due", header: "المستحق", sortKey: "amountDue", align: "end", cell: (p) => <span className="num font-semibold">{formatMoney(p.amountDue)}</span> },
+    { key: "due", header: "المستحق", sortKey: "amountDue", align: "end", cell: (p) => <span className="num font-semibold">{formatMoney(p.amountDue, p.currencySymbol ? { symbol: p.currencySymbol, fractionDigits: p.currencyDecimals ?? 2 } : undefined)}</span> },
     {
       key: "paid",
       header: "المدفوع",
       align: "end",
       hideBelow: "md",
-      cell: (p) => <span className="num text-muted-foreground">{formatMoney(p.amountPaid)}</span>,
+      cell: (p) => <span className="num text-muted-foreground">{formatMoney(p.amountPaid, p.currencySymbol ? { symbol: p.currencySymbol, fractionDigits: p.currencyDecimals ?? 2 } : undefined)}</span>,
     },
     {
       key: "remaining",
@@ -80,11 +81,11 @@ function buildColumns(onPay: (p: PayoutListItem) => void): DataTableColumn<Payou
         const r = remainingOf(p);
         return r > 0 ? (
           <span className="num font-semibold text-warning">
-            {formatMoney(r)}
+            {formatMoney(r, p.currencySymbol ? { symbol: p.currencySymbol, fractionDigits: p.currencyDecimals ?? 2 } : undefined)}
             {p.amountPaid > 0 ? <span className="block text-[11px] font-normal text-muted-foreground">دفعة جزئية</span> : null}
           </span>
         ) : (
-          <span className="num text-muted-foreground">{formatMoney(0)}</span>
+          <span className="num text-muted-foreground">{formatMoney(0, p.currencySymbol ? { symbol: p.currencySymbol, fractionDigits: p.currencyDecimals ?? 2 } : undefined)}</span>
         );
       },
     },
@@ -130,6 +131,7 @@ export default function PayoutsPageContent() {
     sort: "periodEnd",
     order: "desc",
     page: 1,
+    country: "all",
   });
   const [dialog, setDialog] = useState<{ payout: PayoutListItem | null; open: boolean }>({ payout: null, open: false });
 
@@ -139,6 +141,7 @@ export default function PayoutsPageContent() {
     sort: state.sort,
     order: state.order as "asc" | "desc",
     page: state.page,
+    country: state.country,
   });
 
   const counts = data?.meta.counts;
@@ -150,7 +153,12 @@ export default function PayoutsPageContent() {
       <PageHeader
         title="مدفوعات المغاسل"
         description="مستحقات المغاسل عن كل فترة تسوية — سجّل التحويلات يدويًا بالمرجع لتسوية المعاملات المرتبطة."
-        actions={<ExportCsvButton filename="carzen-payouts" columns={CSV} rows={data?.items} />}
+        actions={
+          <>
+            <CountryFilter value={state.country} onChange={(country) => setState({ country })} />
+            <ExportCsvButton filename="carzen-payouts" columns={CSV} rows={data?.items} />
+          </>
+        }
       />
 
       {error && !data ? null : (
@@ -160,7 +168,9 @@ export default function PayoutsPageContent() {
               <FinanceMetricCard
                 label="مستحق غير مدفوع"
                 definition="إجمالي المتبقي للمغاسل في الدفعات المستحقة (المستحق ناقص المدفوع)."
-                value={formatMoney(totals.due)}
+                value={(data?.meta.totalsByCurrency?.length ? data.meta.totalsByCurrency : [{ symbol: "ج.م", decimals: 2, due: totals.due, paid: totals.paid }])
+                  .map((c) => formatMoney(c.due, { symbol: c.symbol, fractionDigits: c.decimals }))
+                  .join(" · ")}
                 icon={<Wallet />}
                 tone="var(--warning)"
                 highlight={totals.due > 0}
@@ -169,7 +179,9 @@ export default function PayoutsPageContent() {
               <FinanceMetricCard
                 label="إجمالي المدفوع"
                 definition="مجموع ما تم تحويله للمغاسل في كل الدفعات المسجلة، بما فيها الدفعات الجزئية."
-                value={formatMoney(totals.paid)}
+                value={(data?.meta.totalsByCurrency?.length ? data.meta.totalsByCurrency : [{ symbol: "ج.م", decimals: 2, due: totals.due, paid: totals.paid }])
+                  .map((c) => formatMoney(c.paid, { symbol: c.symbol, fractionDigits: c.decimals }))
+                  .join(" · ")}
                 icon={<CircleCheckBig />}
                 tone="var(--success)"
                 hint={`${formatNumber(counts.paid)} دفعة مسددة بالكامل`}

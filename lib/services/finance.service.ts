@@ -16,8 +16,8 @@ import type {
   UpdateCommissionPayload,
 } from "@/types/finance";
 
-export function fetchFinanceOverview(period: FinancePeriod) {
-  return getData<FinanceOverview>("/admin/finance/overview", { period }, "تعذر تحميل الملخص المالي");
+export function fetchFinanceOverview(period: FinancePeriod, country = "all") {
+  return getData<FinanceOverview>("/admin/finance/overview", { period, country }, "تعذر تحميل الملخص المالي");
 }
 
 export function fetchTransactions(params: TransactionListParams) {
@@ -32,15 +32,15 @@ export function resolveDiscrepancy(id: string, note: string) {
   return send<Transaction>("post", `/admin/finance/transactions/${id}/resolve`, { note });
 }
 
-export function fetchCommission() {
-  return getData<CommissionSettings>("/admin/finance/commission", undefined, "تعذر تحميل إعدادات العمولة");
+export function fetchCommission(country = "all") {
+  return getData<CommissionSettings>("/admin/finance/commission", { country }, "تعذر تحميل إعدادات العمولة");
 }
 
 export function updateCommission(payload: UpdateCommissionPayload) {
   return send<null>("put", "/admin/finance/commission", payload);
 }
 
-export function fetchPayouts(params: ListParams & { status?: string }) {
+export function fetchPayouts(params: ListParams & { status?: string; country?: string }) {
   return getPaginated<PayoutListItem, PayoutListMeta>("/admin/finance/payouts", params, "تعذر تحميل المدفوعات");
 }
 
