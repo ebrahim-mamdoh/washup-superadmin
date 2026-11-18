@@ -19,6 +19,11 @@ const loginSchema = z.object({
 
 type LoginValues = z.infer<typeof loginSchema>;
 
+/**
+ * Demo account: shown and prefilled only on local/demo builds that set
+ * NEXT_PUBLIC_SHOW_DEMO_LOGINS=1; production login pages must never publish credentials (GAP-002).
+ */
+const SHOW_DEMO_LOGINS = process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === "1";
 const DEMO = { email: "sara@carzen.demo", password: "demo1234" };
 
 function safeNext(raw: string | null) {
@@ -40,7 +45,7 @@ export default function LoginForm() {
     formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: process.env.NODE_ENV === "production" ? { email: "", password: "" } : DEMO,
+    defaultValues: SHOW_DEMO_LOGINS ? DEMO : { email: "", password: "" },
   });
 
   useEffect(() => {
@@ -115,6 +120,7 @@ export default function LoginForm() {
         تسجيل الدخول
       </Button>
 
+      {SHOW_DEMO_LOGINS ? (
       <div className="flex items-center justify-between rounded-xl border border-dashed border-border bg-muted/40 px-3.5 py-3">
         <div className="text-xs leading-relaxed">
           <p className="font-medium">حساب العرض التجريبي</p>
@@ -133,6 +139,7 @@ export default function LoginForm() {
           دخول سريع
         </Button>
       </div>
+      ) : null}
 
       <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <ShieldCheck className="size-3.5" />
