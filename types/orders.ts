@@ -79,6 +79,8 @@ export interface Order {
   createdAt: string;
   /** Set when an end-of-day closing locked this order (spec MG-08). */
   closedInDayId?: string | null;
+  /** Currency and clock of the branch's country. */
+  branchLocale?: { symbol: string; decimals: number; timezone: string } | null;
 }
 
 export interface OrderListItem extends Order {
@@ -91,6 +93,7 @@ export interface OrderListItem extends Order {
 export type OrderListMeta = {
   counts: StatusCounts<OrderStatus>;
   totalAmount: number;
+  amountsByCurrency?: { symbol: string; decimals: number; amount: number }[];
 };
 
 export interface OrderListParams extends ListParams {
@@ -101,6 +104,7 @@ export interface OrderListParams extends ListParams {
   customerId?: string;
   dateFrom?: string;
   dateTo?: string;
+  country?: string;
 }
 
 export interface OrderDetails {

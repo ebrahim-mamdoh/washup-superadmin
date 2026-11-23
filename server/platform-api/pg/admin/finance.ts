@@ -270,8 +270,8 @@ export const financeRoutes = [
       pagination,
       meta: {
         counts: { ...countsOf(countRows, TXN_STATUSES), discrepancy },
-        totals,
-        totalsByCurrency,
+        totals: { gross: totals.gross, commission: round2(totals.commission), netToWash: round2(totals.netToWash) },
+        totalsByCurrency: totalsByCurrency.map((c) => ({ ...c, commission: round2(c.commission), netToWash: round2(c.netToWash) })),
       },
     });
   }),

@@ -39,12 +39,73 @@ export function clockToMin(hhmm: string, isClose = false): number {
   return isClose && v === 0 ? 1440 : v;
 }
 
+const CAIRO = "Africa/Cairo";
+
+/** Calendar / clock parts in a branch timezone (wash hours are wall-clock, not the server TZ). */
+export function zoneDateParts(d: Date, timeZone = CAIRO): { y: number; m: number; day: number; weekday: number; hour: number; minute: number } {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const p = Object.fromEntries(fmt.formatToParts(d).map((x) => [x.type, x.value]));
+  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    y: Number(p.year),
+    m: Number(p.month),
+    day: Number(p.day),
+    weekday: weekdayMap[p.weekday] ?? 0,
+    hour: Number(p.hour),
+    minute: Number(p.minute),
+  };
+}
+
+export function cairoDateParts(d: Date, timeZone = CAIRO) {
+  return zoneDateParts(d, timeZone);
+}
+
+export function cairoDayKey(d: Date | string, timeZone = CAIRO): string {
+  const p = cairoDateParts(new Date(d), timeZone);
+  return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+}
+
+/** Instant whose wall-clock in `timeZone` equals the given Y-M-D H:M. */
+export function zoneLocalToUtc(timeZone: string, y: number, month: number, day: number, hour = 0, minute = 0): Date {
+  const utc = Date.UTC(y, month - 1, day, hour, minute, 0);
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const wallAsUtc = (instant: Date) => {
+    const p = Object.fromEntries(dtf.formatToParts(instant).filter((x) => x.type !== "literal").map((x) => [x.type, x.value]));
+    return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+  };
+  return new Date(utc - (wallAsUtc(new Date(utc)) - utc));
+}
+
+/** Instant whose Cairo wall-clock equals the given Y-M-D H:M. */
+export function cairoLocalToUtc(y: number, month: number, day: number, hour = 0, minute = 0, timeZone = CAIRO): Date {
+  return zoneLocalToUtc(timeZone, y, month, day, hour, minute);
+}
+
 export function minutesOfDay(d: Date): number {
-  return d.getHours() * 60 + d.getMinutes();
+  const p = cairoDateParts(d);
+  return p.hour * 60 + p.minute;
 }
 
 export function hoursFor(branch: Branch, date: Date): WorkingDay {
-  return branch.workingHours[date.getDay()] ?? { open: "09:00", close: "21:00", closed: false };
+  return branch.workingHours[cairoDateParts(date).weekday] ?? { open: "09:00", close: "21:00", closed: false };
 }
 
 export function isOpenAt(branch: Branch, at: Date = now()): boolean {
@@ -55,25 +116,40 @@ export function isOpenAt(branch: Branch, at: Date = now()): boolean {
   return m >= clockToMin(h.open) && m < clockToMin(h.close, true);
 }
 
-function atMinutes(date: Date, minutes: number): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setMinutes(minutes);
-  return d;
+export function atMinutes(date: Date, minutes: number): Date {
+  const p = cairoDateParts(date);
+  const dayShift = Math.floor(minutes / 1440);
+  const mins = minutes - dayShift * 1440;
+  const noon = cairoLocalToUtc(p.y, p.m, p.day, 12, 0);
+  const shifted = cairoDateParts(new Date(noon.getTime() + dayShift * 86400000));
+  return cairoLocalToUtc(shifted.y, shifted.m, shifted.day, Math.floor(mins / 60), mins % 60);
+}
+
+/** Owner of this wash, or an active manager/employee of the branch. */
+export function isStaffAssignable(
+  s: { status: string; role: string; branchId: string; businessId: string },
+  branchId: string,
+  businessId: string,
+): boolean {
+  if (s.status !== "active") return false;
+  if (s.role === "owner") return s.businessId === businessId;
+  return s.branchId === branchId;
 }
 
 // ── People ──────────────────────────────────────────────────
 
-/** Employees/managers of a branch whose scheduled shift covers `at` (spec MG-04: on-shift staff). */
+/** Staff of a branch who are clocked in, or whose weekly pattern covers `at`. */
 export function onShiftAt(db: MockDatabase, branchId: string, at: Date = now()): Staff[] {
   const m = minutesOfDay(at);
-  return db.staff.filter(
-    (s) =>
-      s.branchId === branchId &&
-      s.status === "active" &&
-      s.role !== "owner" &&
-      s.scheduledShifts.some((p) => p.days.includes(at.getDay()) && m >= clockToMin(p.start) && m < clockToMin(p.end, true)),
+  const weekday = cairoDateParts(at).weekday;
+  const openIds = new Set(
+    db.shifts.filter((sh) => sh.branchId === branchId && sh.reviewStatus === "open" && !sh.actualEnd).map((sh) => sh.staffId),
   );
+  return db.staff.filter((s) => {
+    if (s.branchId !== branchId || s.status !== "active") return false;
+    if (openIds.has(s.id)) return true;
+    return s.role !== "owner" && s.scheduledShifts.some((p) => p.days.includes(weekday) && m >= clockToMin(p.start) && m < clockToMin(p.end, true));
+  });
 }
 
 export function staffName(db: MockDatabase, id: string | null): string | null {
@@ -96,7 +172,8 @@ export function priceServices(db: MockDatabase, branchId: string, serviceIds: st
 
   const items: OrderItem[] = services.map((s) => ({ serviceId: s.id, name: s.name, type: s.type, price: s.price, durationMin: s.durationMin }));
   const subtotal = items.reduce((sum, it) => sum + it.price, 0);
-  const offer = bestOffer(db, branchId, primaries[0].category, subtotal);
+  // Offers apply to the primary service only — the same rule as the customer app's create_order.
+  const offer = bestOffer(db, branchId, primaries[0].category, primaries[0].price);
 
   return {
     items,
@@ -108,7 +185,8 @@ export function priceServices(db: MockDatabase, branchId: string, serviceIds: st
   };
 }
 
-function bestOffer(db: MockDatabase, branchId: string, category: string, subtotal: number) {
+/** Best live offer for the branch; `base` is the primary service's price (the part offers discount). */
+function bestOffer(db: MockDatabase, branchId: string, category: string, base: number) {
   const t = now().getTime();
   let best: { id: string; amount: number; title: Localized } | null = null;
   for (const o of db.offers) {
@@ -116,7 +194,7 @@ function bestOffer(db: MockDatabase, branchId: string, category: string, subtota
     if (new Date(o.startAt).getTime() > t || new Date(o.endAt).getTime() < t) continue;
     if (!o.branchIds.includes(branchId)) continue;
     if (o.serviceCategories.length && !o.serviceCategories.includes(category)) continue;
-    const amount = Math.min(subtotal, o.discountType === "percent" ? Math.round((subtotal * o.discountValue) / 100) : o.discountValue);
+    const amount = offerAmount(o, base);
     if (!best || amount > best.amount) best = { id: o.id, amount, title: o.title };
   }
   return best;
@@ -184,6 +262,11 @@ export function overdueMinutes(o: Order, at: Date = now()): number {
     const startedAt = started ? new Date(started.at).getTime() : new Date(o.scheduledAt).getTime();
     return Math.max(0, Math.round((t - startedAt) / 60000 - o.durationMin));
   }
+  if (o.status === "waiting") {
+    const arrived = [...o.timeline].reverse().find((e) => e.status === "waiting");
+    const arrivedAt = arrived ? new Date(arrived.at).getTime() : new Date(o.scheduledAt).getTime();
+    return Math.max(0, Math.round((t - arrivedAt) / 60000));
+  }
   if (o.status === "confirmed" || o.status === "pending") {
     return Math.max(0, Math.round((t - new Date(o.scheduledAt).getTime()) / 60000));
   }
@@ -202,6 +285,7 @@ export function toVendorItem(db: MockDatabase, o: Order): VendorOrderListItem {
     vehicleLabel: vehicle ? `${vehicle.make} ${vehicle.model}` : null,
     nextAction: nextActionFor(o),
     overdueMin: overdueMinutes(o),
+    noShowGraceMin: db.branches.find((b) => b.id === o.branchId)?.settings.noShowGraceMin ?? 15,
     locked: Boolean(o.closedInDayId),
   };
 }
@@ -232,7 +316,7 @@ export function allowedActions(db: MockDatabase, actor: VendorActor, o: Order): 
     case "waiting":
       add(p.runService, "start");
       add(p.cancelOrder, "cancel");
-      add(true, "assign", "add_service", "discount");
+      add(true, "no_show", "assign", "add_service", "discount");
       break;
     case "in_service":
       add(p.runService, "complete");
@@ -254,7 +338,7 @@ export function allowedActions(db: MockDatabase, actor: VendorActor, o: Order): 
 function recomputeTotals(db: MockDatabase, o: Order) {
   o.subtotal = o.items.reduce((s, it) => s + it.price, 0);
   o.durationMin = o.items.reduce((s, it) => s + it.durationMin, 0);
-  if (o.discount && o.discount.pct > 0) o.discount.amount = Math.round((o.subtotal * o.discount.pct) / 100);
+  if (o.discount) o.discount.amount = discountAfterItemsChange(o.discount, o.items, o.subtotal);
   o.total = Math.max(0, o.subtotal - (o.discount?.amount ?? 0));
   const txn = db.transactions.find((t) => t.orderId === o.id);
   if (txn && txn.status === "pending") {
@@ -311,6 +395,42 @@ function requireReason(value: unknown, label = "السبب"): string {
   return text;
 }
 
+/** Keys the customer app would otherwise show raw. Stored text is a sentence in Arabic and English. */
+const CANCEL_REASON_TEXT: Record<string, string> = {
+  expired_unconfirmed:
+    "اتلغى تلقائيًا لأن المغسلة ما أكدتش في الوقت المحدد — Cancelled because the wash did not confirm before the appointment",
+  expired_not_started:
+    "أُغلق الطلب لأن الخدمة لم تبدأ بعد تسجيل الوصول — Closed because the service never started after check-in",
+  "Cancelled by customer": "ألغاه العميل — Cancelled by the customer",
+};
+
+const MACHINE_KEY = /^[a-z0-9]+(?:[._][a-z0-9]+)+$/i;
+
+/** Turns a stored key into a sentence. Unknown machine keys are rejected so the app never shows them. */
+export function readableCancelReason(raw: string): string {
+  const text = raw.trim();
+  if (CANCEL_REASON_TEXT[text]) return CANCEL_REASON_TEXT[text];
+  if (MACHINE_KEY.test(text) && !/[\u0600-\u06FF]/.test(text)) {
+    throw new MockApiError("اكتب سبب الإلغاء بجملة واضحة بالعربي أو الإنجليزي", 422, { reason: ["اكتب السبب بالعربي أو الإنجليزي"] });
+  }
+  return text;
+}
+
+/** `null` when the code matched. A string is the audit reason for a manager waiver. */
+export function assertCheckInCode(actor: { role: string }, orderCode: string, payload: { code?: string; waiveCheckIn?: boolean }): string | null {
+  if (payload.waiveCheckIn) {
+    if (actor.role !== "owner" && actor.role !== "manager") {
+      throw new MockApiError("تسجيل الوصول بدون كود متاح للمدير أو المالك فقط", 403);
+    }
+    return "تسجيل وصول بدون كود — العميل بدون هاتف";
+  }
+  const entered = String(payload.code ?? "").replace(/\s/g, "").toUpperCase();
+  if (!orderCode || entered !== orderCode.trim().toUpperCase()) {
+    throw new MockApiError("كود الوصول غير مطابق", 422, { code: ["كود الوصول غير مطابق"] });
+  }
+  return null;
+}
+
 // ── State machine ───────────────────────────────────────────
 
 const PAYMENT_LABEL: Record<PaymentMethod, string> = { cash: "نقدي", card: "بطاقة", online: "أونلاين" };
@@ -332,13 +452,14 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
       return `تم تأكيد الحجز ${o.number} وإبلاغ العميل`;
     }
     case "check_in": {
+      const waiver = assertCheckInCode(actor, o.code, payload);
       o.status = "waiting";
       pushTimeline(o, "waiting", actor);
-      audit(db, actor, o, "order.check_in", from, "waiting");
+      audit(db, actor, o, "order.check_in", from, waiver ? "waiting · waived" : "waiting", waiver);
       return `تم تسجيل وصول ${o.plate || o.number}`;
     }
     case "start": {
-      const staffId = payload.staffId ?? o.assignedStaffId;
+      const staffId = payload.staffId ?? o.assignedStaffId ?? actor.staff.id;
       if (!staffId) throw new MockApiError("اختر الموظف المسؤول عن الخدمة", 422, { staffId: ["مطلوب"] });
       assertAssignable(db, o.branchId, staffId);
       const busy = db.orders.filter((x) => x.branchId === o.branchId && x.status === "in_service").length;
@@ -352,6 +473,7 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
     case "complete": {
       o.status = "completed";
       pushTimeline(o, "completed", actor);
+      if (!db.transactions.some((t) => t.orderId === o.id)) addTransaction(db, o);
       audit(db, actor, o, "order.complete", from, "completed");
       return `اكتملت الخدمة — بانتظار الدفع ${o.total}`;
     }
@@ -375,12 +497,17 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
       });
       const txn = db.transactions.find((t) => t.orderId === o.id);
       if (txn) txn.status = "paid";
+      else {
+        addTransaction(db, o);
+        const created = db.transactions.find((t) => t.orderId === o.id);
+        if (created) created.status = "paid";
+      }
       audit(db, actor, o, "order.payment", "pending", `paid · ${PAYMENT_LABEL[method]} · ${o.total}`);
       const change = method === "cash" ? Number(payload.amountReceived ?? o.total) - o.total : 0;
       return change > 0 ? `تم التحصيل — الباقي للعميل ${change}` : "تم تحصيل المبلغ بنجاح";
     }
     case "cancel": {
-      const reason = requireReason(payload.reason, "سبب الإلغاء");
+      const reason = readableCancelReason(requireReason(payload.reason, "سبب الإلغاء"));
       o.status = "cancelled";
       o.cancel = { reason, byType: "staff", byId: actor.staff.id, at: now().toISOString() };
       pushTimeline(o, "cancelled", actor);
@@ -415,16 +542,10 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
     }
     case "discount": {
       const reason = requireReason(payload.reason, "سبب الخصم");
-      const value = Number(payload.discountValue);
-      if (Number.isNaN(value) || value <= 0) throw new MockApiError("قيمة الخصم غير صالحة", 422);
-      const pct = payload.discountType === "fixed" ? (value / o.subtotal) * 100 : value;
-      if (pct > actor.staff.maxDiscountPct) {
-        throw new MockApiError(`الحد الأقصى لخصمك ${actor.staff.maxDiscountPct}٪ — هذا الخصم ${Math.round(pct)}٪`, 403);
-      }
+      const { value, manual } = parseDiscountValue(payload.discountType, payload.discountValue, o.subtotal, actor.staff.maxDiscountPct);
       const old = o.total;
-      const manual = payload.discountType === "fixed" ? Math.min(value, o.subtotal) : Math.round((o.subtotal * value) / 100);
       const offer = o.offerId ? db.offers.find((x) => x.id === o.offerId) : undefined;
-      o.discount = withManualDiscount(o, offer ? offerAmount(offer, o.subtotal) : null, manual, payload.discountType === "fixed" ? 0 : value, reason);
+      o.discount = withManualDiscount(o, offer ? offerAmount(offer, primaryPrice(o.items)) : null, manual, payload.discountType === "fixed" ? 0 : value, reason);
       recomputeTotals(db, o);
       audit(db, actor, o, "order.discount", old, o.total, reason);
       return `تم تطبيق الخصم — الإجمالي الآن ${o.total}`;
@@ -449,9 +570,28 @@ export function performAction(db: MockDatabase, actor: VendorActor, o: Order, pa
   }
 }
 
+export function parseDiscountValue(
+  discountType: unknown,
+  discountValue: unknown,
+  subtotal: number,
+  maxPct: number,
+): { value: number; manual: number } {
+  const value = Number(discountValue);
+  if (!Number.isFinite(value) || value <= 0) throw new MockApiError("قيمة الخصم غير صالحة", 422);
+  if (discountType !== "fixed" && value > 100) throw new MockApiError("نسبة الخصم لا تتجاوز 100٪", 422);
+  const capped = discountType === "fixed" ? Math.min(value, subtotal) : value;
+  const pct = discountType === "fixed" ? (subtotal > 0 ? (capped / subtotal) * 100 : 0) : value;
+  if (pct > maxPct) {
+    throw new MockApiError(`الحد الأقصى لخصمك ${maxPct}٪ — هذا الخصم ${Math.round(pct)}٪`, 403);
+  }
+  const manual = discountType === "fixed" ? capped : Math.round((subtotal * value) / 100);
+  return { value, manual };
+}
+
 function assertAssignable(db: MockDatabase, branchId: string, staffId: string) {
   const s = db.staff.find((x) => x.id === staffId);
-  if (!s || s.branchId !== branchId || s.status !== "active" || s.role === "owner") {
+  const businessId = db.branches.find((b) => b.id === branchId)?.businessId ?? "";
+  if (!s || !isStaffAssignable(s, branchId, businessId)) {
     throw new MockApiError("الموظف غير متاح في هذا الفرع", 422);
   }
 }
@@ -480,8 +620,18 @@ function nextCode(db: MockDatabase): string {
   return c;
 }
 
+const PLATE_FOLD: Record<string, string> = {
+  "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+  "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
+  "أ": "ا", "إ": "ا", "آ": "ا", "ى": "ي", "ة": "ه",
+};
+
+/** Same folding as public.normalize_plate: spaces, Arabic digits, alef/ya/ta marbuta. */
 export function normalizePlate(p: string): string {
-  return p.replace(/[\s-]/g, "").toUpperCase();
+  return p
+    .replace(/[\s\-_.]/g, "")
+    .replace(/[٠-٩۰-۹أإآىة]/g, (ch) => PLATE_FOLD[ch] ?? ch)
+    .toUpperCase();
 }
 
 export function normalizePhone(p: string): string {
@@ -526,6 +676,9 @@ export function recognize(db: MockDatabase, businessId: string, plate?: string |
     if (customer && !vehicle) {
       vehicle = db.vehicles.find((v) => v.customerId === customer!.id && v.isDefault && db.orders.some((o) => o.vehicleId === v.id && o.businessId === businessId)) ?? null;
     }
+  }
+  if (vehicle && plate && normalizePlate(plate).length >= 3 && vehicle.plateNormalized !== normalizePlate(plate)) {
+    vehicle = null;
   }
   if (!customer) return { customer: null, vehicle, visits: 0, lastVisitAt: null, usualServiceId: null, usualServiceName: null };
 
@@ -582,7 +735,7 @@ export function createOrder(db: MockDatabase, actor: VendorActor, payload: Creat
     db.customers.push(customer);
   }
   if (isPhone && !customer) throw new MockApiError("رقم موبايل العميل مطلوب للحجز الهاتفي", 422, { customerPhone: ["مطلوب"] });
-  let vehicle = rec.vehicle;
+  let vehicle = rec.vehicle && rec.vehicle.plateNormalized === plate ? rec.vehicle : null;
   if (!vehicle && customer) {
     vehicle = {
       id: nid("ve"),
@@ -629,7 +782,6 @@ export function createOrder(db: MockDatabase, actor: VendorActor, payload: Creat
     closedInDayId: null,
   };
   db.orders.push(order);
-  addTransaction(db, order);
   if (customer) customer.lastActiveAt = now().toISOString();
   logAudit(db, {
     actorType: "staff",
@@ -646,7 +798,7 @@ export function createOrder(db: MockDatabase, actor: VendorActor, payload: Creat
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   pending: "بانتظار التأكيد",
   confirmed: "مؤكد",
-  waiting: "في الانتظار",
+  waiting: "تم الوصول",
   in_service: "جارٍ التنفيذ",
   completed: "مكتمل",
   cancelled: "ملغي",
@@ -655,9 +807,28 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 
 // ── Shared rules (mock + Postgres) ──────────────────────────
 
-/** Amount an offer takes off `subtotal` (same formula as `bestOffer`). */
-export function offerAmount(offer: { discountType: "percent" | "fixed"; discountValue: number }, subtotal: number): number {
-  return Math.min(subtotal, offer.discountType === "percent" ? Math.round((subtotal * offer.discountValue) / 100) : offer.discountValue);
+/**
+ * Amount an offer takes off `base` — the primary service's price, never the add-ons (the same rule
+ * as the customer app's create_order, so an order costs the same through every channel).
+ */
+export function offerAmount(offer: { discountType: "percent" | "fixed"; discountValue: number }, base: number): number {
+  return Math.min(base, offer.discountType === "percent" ? Math.round((base * offer.discountValue) / 100) : offer.discountValue);
+}
+
+/** Price of the order's primary service (what offers discount). */
+export function primaryPrice(items: Pick<OrderItem, "type" | "price">[]): number {
+  return items.find((it) => it.type === "primary")?.price ?? 0;
+}
+
+/**
+ * The discount once the items change (an add-on was added). A percent discount from an offer stays
+ * a percent of the primary service; a manual percent discount follows the new subtotal; fixed
+ * amounts (and offer + manual stacks, stored as an amount) stay as they are.
+ */
+export function discountAfterItemsChange(d: NonNullable<Order["discount"]>, items: Pick<OrderItem, "type" | "price">[], subtotal: number): number {
+  if (!(d.pct > 0)) return d.amount;
+  const offerOnly = isOfferReason(d.reason) && !d.reason.includes(" + ");
+  return Math.round(((offerOnly ? primaryPrice(items) : subtotal) * d.pct) / 100);
 }
 
 /**
@@ -786,49 +957,3 @@ export function roundMoney(n: number, decimals = 2): number {
   return Math.round(n * factor) / factor;
 }
 
-export function cairoDateParts(d: Date, timeZone: string = "Africa/Cairo"): { y: number; m: number; day: number; weekday: number; hour: number; minute: number } {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
-  const p = Object.fromEntries(fmt.formatToParts(d).map((x) => [x.type, x.value]));
-  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return {
-    y: Number(p.year),
-    m: Number(p.month),
-    day: Number(p.day),
-    weekday: weekdayMap[p.weekday] ?? 0,
-    hour: Number(p.hour),
-    minute: Number(p.minute),
-  };
-}
-
-export function cairoDayKey(d: Date | string, timeZone: string = "Africa/Cairo"): string {
-  const p = cairoDateParts(new Date(d), timeZone);
-  return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
-}
-
-export function cairoLocalToUtc(y: number, month: number, day: number, hour = 0, minute = 0, timeZone: string = "Africa/Cairo"): Date {
-  const utc = Date.UTC(y, month - 1, day, hour, minute, 0);
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
-  const wallAsUtc = (instant: Date) => {
-    const p = Object.fromEntries(dtf.formatToParts(instant).filter((x) => x.type !== "literal").map((x) => [x.type, x.value]));
-    return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
-  };
-  return new Date(utc - (wallAsUtc(new Date(utc)) - utc));
-}

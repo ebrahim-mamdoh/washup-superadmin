@@ -3,6 +3,7 @@ import "server-only";
 import type { Order, OrderDetails, OrderStatus } from "@/types/orders";
 
 import { MockApiError, ok, requireText } from "../../http";
+import { readableCancelReason } from "../../vendor/engine";
 import { UPCOMING_STATUSES } from "../../lookups";
 import {
   auditWhere,
@@ -45,13 +46,15 @@ export const orderRoutes = [
     const dateFrom = query.get("dateFrom");
     const dateTo = query.get("dateTo");
     const search = searchPattern(query);
+    const rawSearch = query.get("search")?.trim() ?? "";
+    const country = query.get("country")?.trim().toUpperCase() || "";
     // Day bounds in server-local time, exactly like the mock (`T00:00:00` / `T23:59:59` local).
     const from = dateFrom ? new Date(`${dateFrom}T00:00:00`).toISOString() : null;
     const to = dateTo ? new Date(`${dateTo}T23:59:59`).toISOString() : null;
 
     // Light rows for filtering/sorting/counting; the page is loaded in full afterwards.
     const base = sql`
-      select o.id, o.status::text as status, o.number, o.total, o.scheduled_at, cu.name as customer_name
+      select o.id, o.status::text as status, o.number, o.total, o.scheduled_at, cu.name as customer_name, br.area_id as area_id
       from public.orders o
       left join public.customers cu on cu.id = o.customer_id
       join public.businesses bz on bz.id = o.business_id
@@ -63,14 +66,28 @@ export const orderRoutes = [
         ${customerId ? sql`and o.customer_id = ${customerId}` : sql``}
         ${from ? sql`and o.scheduled_at >= ${from}` : sql``}
         ${to ? sql`and o.scheduled_at <= ${to}` : sql``}
-        ${search ? sql`and (o.number ilike ${search} or o.code ilike ${search} or o.plate ilike ${search} or cu.name ilike ${search}
+        ${country && country !== "ALL" ? sql`and exists (select 1 from public.areas ar where ar.id = br.area_id and ar.country_code = ${country})` : sql``}
+        ${search ? sql`and (o.number ilike ${search} or o.code ilike ${search} or o.plate ilike ${search}
+                         or (length(public.normalize_plate(${rawSearch})) >= 2 and strpos(coalesce(o.plate_normalized, ''), public.normalize_plate(${rawSearch})) > 0)
+                         or cu.name ilike ${search}
                          or bz.name ->> 'ar' ilike ${search} or br.name ->> 'ar' ilike ${search})` : sql``}`;
 
     const filter = status && status !== "all" ? sql`where w.status = ${status}` : sql``;
-    const [countRows, [{ total, totalAmount }]] = await Promise.all([
+    const [countRows, [{ total, totalAmount }], amountsByCurrency] = await Promise.all([
       sql<{ k: string; n: number }[]>`with w as (${base}) select w.status as k, count(*)::int as n from w group by w.status`,
       sql<{ total: number; totalAmount: number }[]>`
-        with w as (${base}) select count(*)::int as total, coalesce(sum(w.total), 0) as "totalAmount" from w ${filter}`,
+        with w as (${base}) select count(*)::int as total,
+          coalesce(sum(w.total) filter (where w.status not in ('cancelled', 'no_show')), 0) as "totalAmount" from w ${filter}`,
+      sql<{ symbol: string; decimals: number; amount: number }[]>`
+        with w as (${base})
+        select c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
+               coalesce(sum(w.total) filter (where w.status not in ('cancelled', 'no_show')), 0) as amount
+        from w
+        join public.areas ar on ar.id = w.area_id
+        join public.countries c on c.code = ar.country_code
+        ${filter}
+        group by c.code, c.currency_symbol, c.currency_decimals
+        order by c.code`,
     ]);
     // Text sorts use the C collation: same code-point order as the mock's JS comparisons.
     const sort = orderBy(
@@ -90,7 +107,7 @@ export const orderRoutes = [
       const ids = await sql<{ id: string }[]>`with w as (${base}) select w.id from w ${filter} ${sort} limit ${limit} offset ${offset}`;
       return toOrderListItems(sql, await ordersInOrder(sql, ids.map((r) => r.id)));
     });
-    return ok(items, "OK", { pagination, meta: { counts: countsOf(countRows, STATUSES), totalAmount } });
+    return ok(items, "OK", { pagination, meta: { counts: countsOf(countRows, STATUSES), totalAmount, amountsByCurrency } });
   }),
 
   route("GET", "/admin/orders/:id", async ({ params }) => {
@@ -133,16 +150,16 @@ export const orderRoutes = [
     const order = await tx(async (t) => {
       const current = await orderById(t, params.id, "الحجز");
       if (!(UPCOMING_STATUSES as readonly string[]).includes(current.status)) {
-        throw new MockApiError("يمكن إلغاء الحجوزات قيد المراجعة أو المؤكدة فقط", 409);
+        throw new MockApiError("يمكن إلغاء الحجوزات بانتظار التأكيد أو المؤكدة فقط", 409);
       }
-      const reason = requireText(body.reason, "reason", "سبب الإلغاء", 5);
+      const reason = readableCancelReason(requireText(body.reason, "reason", "سبب الإلغاء", 5));
 
       // Status guard in the WHERE clause: an order that moved on meanwhile can't be cancelled.
       const updated = await t`
         update public.orders set status = 'cancelled', cancel_reason = ${reason},
                cancelled_by_type = 'admin', cancelled_by_id = ${admin.id}, cancelled_at = now()
         where id = ${current.id} and status in ('pending', 'confirmed') returning id`;
-      if (!updated.length) throw new MockApiError("يمكن إلغاء الحجوزات قيد المراجعة أو المؤكدة فقط", 409);
+      if (!updated.length) throw new MockApiError("يمكن إلغاء الحجوزات بانتظار التأكيد أو المؤكدة فقط", 409);
       await t`insert into public.order_events (order_id, status, actor_type, actor_id) values (${current.id}, 'cancelled', 'admin', ${admin.id})`;
       // A commission entry that was never settled disappears with the order.
       await t`delete from public.transactions where order_id = ${current.id} and status = 'pending'`;
@@ -162,7 +179,7 @@ export const orderRoutes = [
         current.businessId,
         current.branchId,
         "booking_cancelled",
-        `ألغت إدارة كارزن الحجز ${current.number}`,
+        `ألغت إدارة Wash Up الحجز ${current.number}`,
         `السبب: ${reason}`,
         `/orders/${current.id}`,
       );

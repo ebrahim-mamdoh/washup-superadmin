@@ -39,10 +39,12 @@ export interface TransactionListItem extends Transaction {
 
 export type TransactionFilter = TransactionStatus | "all" | "discrepancy";
 
+export type MoneyTotals = { symbol: string; decimals: number; gross: number; commission: number; netToWash: number };
+
 export type TransactionListMeta = {
   counts: StatusCounts<TransactionStatus | "discrepancy">;
   totals: { gross: number; commission: number; netToWash: number };
-  totalsByCurrency?: { symbol: string; decimals: number; gross: number; commission: number; netToWash: number }[];
+  totalsByCurrency?: MoneyTotals[];
 };
 
 export interface TransactionListParams extends ListParams {

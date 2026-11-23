@@ -18,7 +18,7 @@ import { daysAgo, now, round2 } from "../../db";
 import { ok } from "../../http";
 import { serviceName } from "../../lookups";
 import type { VendorActor } from "../../router";
-import { dayKey, hoursFor, isOpenAt, overdueMinutes } from "../../vendor/engine";
+import { cairoDateParts, dayKey, hoursFor, isOpenAt, overdueMinutes } from "../../vendor/engine";
 import { branchesWhere, ordersWhere, shiftsWhere } from "../entities";
 import { onShiftAt, staffNames } from "../lookups";
 import { vroute } from "../router";
@@ -185,7 +185,7 @@ async function alerts(
       id: "suspended",
       type: "suspended",
       severity: "danger",
-      title: "المغسلة معلّقة من إدارة كارزن",
+      title: "المغسلة معلّقة من إدارة Wash Up",
       description: actor.business.statusReason ?? "لا تظهر للعملاء حاليًا ولا تستقبل حجوزات جديدة.",
       href: "/notifications",
     });
@@ -198,6 +198,17 @@ async function alerts(
       title: `فرق نقدية ${s.difference! > 0 ? "+" : ""}${s.difference} ${(branches.get(s.branchId) as (Branch & { currencySymbol?: string }) | undefined)?.currencySymbol ?? "ج.م"}`,
       description: `وردية ${shiftStaff.get(s.staffId) ?? null} — ${(branches.get(s.branchId)?.name ?? EMPTY).ar}`,
       href: `/shifts?filter=difference`,
+    });
+  }
+  const stuckWaiting = scoped.filter((o) => o.status === "waiting" && overdueMinutes(o, at) >= 120);
+  if (stuckWaiting.length) {
+    out.push({
+      id: "waiting_stuck",
+      type: "waiting_stuck",
+      severity: "warning",
+      title: `${stuckWaiting.length} سيارة في الانتظار لأكثر من ساعتين`,
+      description: stuckWaiting.map((o) => o.number).slice(0, 3).join("، "),
+      href: "/orders?tab=waiting",
     });
   }
   const late = scoped.filter((o) => o.status === "completed" && o.paymentStatus === "pending" && overdueMinutes(o, at) > 30);
@@ -255,8 +266,9 @@ async function setupChecklist(q: Q, actor: VendorActor): Promise<SetupChecklist 
       coalesce(bool_or(br.active), false) as "anyActive",
       (select count(*)::int from public.services sv join public.branches b2 on b2.id = sv.branch_id
         where b2.business_id = ${actor.business.id} and sv.active) as services,
-      exists (select 1 from public.audit_logs al join public.branches b3 on b3.id = al.branch_id
-        where al.action = 'branch.update' and b3.business_id = ${actor.business.id}) as hours,
+      exists (select 1 from public.branch_working_hours h
+        join public.branches b3 on b3.id = h.branch_id
+        where b3.business_id = ${actor.business.id} and not h.closed) as hours,
       exists (select 1 from public.staff st where st.business_id = ${actor.business.id} and st.role <> 'owner') as staff
     from public.branches br where br.business_id = ${actor.business.id}`;
   const steps = [
@@ -282,7 +294,7 @@ export const vendorDashboardRoutes = [
     // Oldest day any figure reads: the previous comparison period, and 7 days for sparklines/alerts.
     const windowStart = daysAgo(Math.max(2 * n - 1, 6));
 
-    const [scoped, branchRows, shiftLists, setup] = await Promise.all([
+    const [scoped, branchRows, shiftLists] = await Promise.all([
       ordersWhere(
         sql,
         sql`o.branch_id = any(${branchIds}) and ((o.scheduled_at >= ${windowStart.toISOString()} and o.scheduled_at <= ${endOfDay(at).toISOString()})
@@ -291,7 +303,6 @@ export const vendorDashboardRoutes = [
       ),
       branchesWhere(sql, sql`br.id = any(${branchIds})`),
       Promise.all(branchIds.map((id) => onShiftAt(sql, id, at))),
-      setupChecklist(sql, actor),
     ]);
     const branches = new Map(branchRows.map((b) => [b.id, b]));
     const onShift = new Map(branchIds.map((id, i) => [id, shiftLists[i]]));
@@ -307,10 +318,11 @@ export const vendorDashboardRoutes = [
 
     let revenueChart: { label: string; value: number }[];
     if (period === "today") {
-      const hours = Array.from({ length: Math.max(1, at.getHours() - 7) }, (_, i) => 8 + i);
+      const hourNow = cairoDateParts(at).hour;
+      const hours = Array.from({ length: Math.max(1, hourNow - 7) }, (_, i) => 8 + i);
       revenueChart = hours.map((h) => ({
         label: `${h % 12 || 12}${h >= 12 ? "م" : "ص"}`,
-        value: paidRevenue(today.filter((o) => new Date(o.scheduledAt).getHours() === h)),
+        value: paidRevenue(today.filter((o) => cairoDateParts(new Date(o.scheduledAt)).hour === h)),
       }));
     } else {
       revenueChart = Array.from({ length: n }, (_, i) => {
@@ -355,8 +367,9 @@ export const vendorDashboardRoutes = [
         topService: topServices[0]?.name ?? null,
         issues: alertList.length,
       },
-      setup,
     };
     return ok(data);
   }),
+  // Guided setup, read by the sidebar card on every page (kept out of the dashboard payload).
+  vroute("GET", "/vendor/setup", async ({ actor }) => ok(await setupChecklist(db(), actor))),
 ];

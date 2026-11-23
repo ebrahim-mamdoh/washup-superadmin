@@ -1,28 +1,50 @@
+import Image from "next/image";
+
 import { cn } from "../../lib/utils";
 
 type BrandLogoProps = {
-  /** Product line under the wordmark, e.g. "لوحة السوبر أدمن" or "بوابة الشركاء". */
   subtitle?: string;
   collapsed?: boolean;
+  /** On a brand-coloured background: the logo sits on a white tile and the subtitle turns white. */
+  tone?: "default" | "light";
   className?: string;
 };
 
-/** Carzen wordmark + mark — one source for every Carzen web app. */
-export function BrandLogo({ subtitle, collapsed, className }: BrandLogoProps) {
+/**
+ * The WashUp logo from the brand file (the W ribbon is the W of "WASHUP"), cut out of its
+ * background into PNGs in /public/brand: the full logo (510×96) and the W alone (176×96),
+ * each with a dark-mode variant whose navy is lifted. Only the variant on screen is loaded
+ * (the hidden one is a lazy image under display:none).
+ */
+function Themed({ name, width, height, className }: { name: "washup-logo" | "washup-mark"; width: number; height: number; className?: string }) {
   return (
-    <div className={cn("flex items-center gap-2.5", className)}>
-      <span className="bg-brand-gradient flex size-9 shrink-0 items-center justify-center rounded-xl shadow-raised">
-        <svg viewBox="0 0 64 64" className="size-6" aria-hidden>
-          <path d="M18 38c6-14 10-18 14-18s8 4 14 18" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
-          <circle cx="32" cy="26" r="4.5" fill="#fff" />
-        </svg>
+    <>
+      <Image src={`/brand/${name}.png`} alt="WashUp" width={width} height={height} className={cn("dark:hidden", className)} />
+      <Image src={`/brand/${name}-dark.png`} alt="WashUp" width={width} height={height} className={cn("hidden dark:block", className)} />
+    </>
+  );
+}
+
+/** WashUp logo — one source for every WashUp web app. */
+export function BrandLogo({ subtitle, collapsed, tone = "default", className }: BrandLogoProps) {
+  if (collapsed) {
+    return (
+      <span className={cn("flex h-9 items-center", className)}>
+        <Themed name="washup-mark" width={51} height={28} className="h-7 w-auto" />
       </span>
-      {!collapsed ? (
-        <div className="min-w-0 leading-tight">
-          <p className="num text-[15px] font-extrabold tracking-tight">Carzen</p>
-          {subtitle ? <p className="text-[11px] font-medium text-muted-foreground">{subtitle}</p> : null}
-        </div>
-      ) : null}
+    );
+  }
+  const light = tone === "light";
+  return (
+    <div className={cn("flex w-fit flex-col items-start gap-1.5", className)}>
+      {light ? (
+        <span className="rounded-xl bg-white px-3 py-2 shadow-raised">
+          <Image src="/brand/washup-logo.png" alt="WashUp" width={149} height={28} className="h-7 w-auto" />
+        </span>
+      ) : (
+        <Themed name="washup-logo" width={138} height={26} className="h-[26px] w-auto" />
+      )}
+      {subtitle ? <p className={cn("text-[11px] leading-none font-medium", light ? "text-white/80" : "text-muted-foreground")}>{subtitle}</p> : null}
     </div>
   );
 }

@@ -62,6 +62,12 @@ export async function handleMockRequest(req: Request, segments: string[]): Promi
   if (segments[0] !== "admin") {
     return fail(`المسار ${req.method.toUpperCase()} /${segments.join("/")} غير موجود`, 404);
   }
+  // Fail closed: a production deploy without CARZEN_DATA_SOURCE=supabase would otherwise serve the
+  // seeded mock store (demo logins, writes to an ephemeral file) under the real URL.
+  if (process.env.NODE_ENV === "production" && process.env.CARZEN_DATA_SOURCE !== "supabase") {
+    console.error("[platform-api] CARZEN_DATA_SOURCE must be \"supabase\" in production");
+    return fail("الخدمة غير متاحة حاليًا", 503);
+  }
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return fail("حجم الطلب أكبر من المسموح", 413);
   if (isLoginPath(segments) && req.method === "POST") {
     const wait = loginThrottle(req);
@@ -102,7 +108,8 @@ export async function handleMockRequest(req: Request, segments: string[]): Promi
       response = await (matched.def as VendorRouteDef).handler({ ...base, actor: actor! });
     } else {
       const adminId = token ? db.sessions[token] : undefined;
-      const admin = adminId ? db.admins.find((a) => a.id === adminId && a.status === "active") : undefined;
+      // Super Admin only (GAP-003): other admin roles have no panel and no API access here.
+      const admin = adminId ? db.admins.find((a) => a.id === adminId && a.status === "active" && a.role === "super") : undefined;
       if (!matched.def.isPublic && !admin) return fail("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى", 401);
       response = await (matched.def as RouteDef).handler({ ...base, admin: admin! });
     }

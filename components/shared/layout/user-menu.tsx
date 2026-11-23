@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ChevronDown, LogOut, RotateCcw, ShieldCheck } from "lucide-react";
+import { LogOut, RotateCcw, ShieldCheck } from "lucide-react";
 
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { ReasonDialog } from "@/components/shared/reason-dialog";
@@ -33,20 +33,16 @@ export function UserMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          className="flex cursor-pointer items-center gap-2 rounded-xl py-1 ps-1 pe-2 transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-          aria-label="قائمة الحساب"
+          className="ms-1 cursor-pointer rounded-full ring-offset-2 ring-offset-background transition-shadow hover:ring-2 hover:ring-border focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          aria-label={`قائمة الحساب — ${admin.name}`}
         >
-          <UserAvatar name={admin.name} size="sm" />
-          <span className="hidden text-start leading-tight md:block">
-            <span className="block text-[13px] font-semibold">{admin.name}</span>
-            <span className="block text-[11px] text-muted-foreground">{ADMIN_ROLE[admin.role].label}</span>
-          </span>
-          <ChevronDown className="hidden size-3.5 text-muted-foreground md:block" />
+          <UserAvatar name={admin.name} size="md" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuGroup>
             <DropdownMenuLabel className="px-2 py-1.5">
               <span className="block text-sm font-semibold text-foreground">{admin.name}</span>
+              <span className="block text-xs font-normal text-muted-foreground">{ADMIN_ROLE[admin.role].label}</span>
               <span className="num block text-xs font-normal text-muted-foreground">{admin.email}</span>
             </DropdownMenuLabel>
           </DropdownMenuGroup>

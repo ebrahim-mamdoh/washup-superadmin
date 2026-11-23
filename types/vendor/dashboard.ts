@@ -67,7 +67,8 @@ export type VendorAlertType =
   | "no_show"
   | "suspended"
   | "review"
-  | "platform";
+  | "platform"
+  | "waiting_stuck";
 
 export interface VendorAlert {
   id: string;
@@ -112,5 +113,4 @@ export interface VendorDashboard {
     topService: Localized | null;
     issues: number;
   };
-  setup: SetupChecklist | null;
 }

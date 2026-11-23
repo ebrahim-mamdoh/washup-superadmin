@@ -32,6 +32,7 @@ import {
 import { InfoList } from "@/components/shared/info-list";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionCard } from "@/components/shared/section-card";
+import { LocationsMap, googleMapsUrl } from "@/components/shared/maps/lazy";
 import { DetailSkeleton, EmptyState, ErrorState } from "@/components/shared/states";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -105,7 +106,7 @@ export default function ApplicationDetailsPageContent({ id }: { id: string }) {
   const hours = summarizeHours(app.workingHours);
   const dailyCars = estimateDailyCars(app.capacity, app.services, hours.avgDailyMinutes);
   const prices = app.services.map((s) => s.price);
-  const mapsHref = `https://www.google.com/maps?q=${app.lat},${app.lng}`;
+  const mapsHref = googleMapsUrl(app);
 
   return (
     <div className="space-y-6">
@@ -184,7 +185,7 @@ export default function ApplicationDetailsPageContent({ id }: { id: string }) {
               </Button>
             }
           >
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
               <InfoList
                 items={[
                   { label: "العنوان", value: app.address, full: true },
@@ -199,21 +200,10 @@ export default function ApplicationDetailsPageContent({ id }: { id: string }) {
                   },
                 ]}
               />
-              <a
-                href={mapsHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`فتح موقع ${app.businessName} في خرائط Google`}
-                className="group relative flex min-h-28 items-center justify-center overflow-hidden rounded-xl border border-border bg-secondary/60 transition-colors hover:border-primary/40 focus-visible:ring-3 focus-visible:ring-ring/30 focus-visible:outline-none"
-              >
-                <span className="absolute inset-0 bg-grid-faint bg-[size:18px_18px] opacity-80" aria-hidden />
-                <span className="relative flex flex-col items-center gap-1.5 text-xs font-medium text-secondary-foreground">
-                  <span className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-raised transition-transform group-hover:-translate-y-0.5">
-                    <MapPin className="size-4" />
-                  </span>
-                  عرض الدبوس على الخريطة
-                </span>
-              </a>
+              <LocationsMap
+                points={[{ id: app.id, lat: app.lat, lng: app.lng, title: app.businessName, subtitle: app.address }]}
+                className="h-56"
+              />
             </div>
           </SectionCard>
 

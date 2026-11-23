@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { GitBranch, MapPin, PauseCircle, PlayCircle } from "lucide-react";
 
 import { AreaCoverage } from "@/components/modules/Branches/AreaCoverage";
+import { BranchLocationDialog } from "@/components/modules/Branches/BranchLocationDialog";
+import { CountryFilter } from "@/components/shared/country-filter";
 import { BRANCH_STATUS } from "@/components/modules/Branches/branch-status";
 import { ToggleBranchDialog } from "@/components/modules/Branches/ToggleBranchDialog";
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
@@ -44,7 +46,7 @@ const CSV: CsvColumn<BranchListItem>[] = [
   { header: "حالة الفرع", value: (b) => BRANCH_STATUS[b.active ? "active" : "inactive"].label },
 ];
 
-function buildColumns(onToggle: (branch: BranchListItem) => void): DataTableColumn<BranchListItem>[] {
+function buildColumns(onToggle: (branch: BranchListItem) => void, onLocate: (branch: BranchListItem) => void): DataTableColumn<BranchListItem>[] {
   return [
     {
       key: "name",
@@ -123,15 +125,21 @@ function buildColumns(onToggle: (branch: BranchListItem) => void): DataTableColu
       header: <span className="sr-only">إجراءات</span>,
       align: "end",
       cell: (b) => (
-        <Button
-          variant={b.active ? "outline" : "secondary"}
-          size="sm"
-          onClick={() => onToggle(b)}
-          aria-label={b.active ? `إيقاف ${b.name.ar}` : `تفعيل ${b.name.ar}`}
-        >
-          {b.active ? <PauseCircle /> : <PlayCircle />}
-          {b.active ? "إيقاف" : "تفعيل"}
-        </Button>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => onLocate(b)}>
+            <MapPin />
+            الموقع
+          </Button>
+          <Button
+            variant={b.active ? "outline" : "secondary"}
+            size="sm"
+            onClick={() => onToggle(b)}
+            aria-label={b.active ? `إيقاف ${b.name.ar}` : `تفعيل ${b.name.ar}`}
+          >
+            {b.active ? <PauseCircle /> : <PlayCircle />}
+            {b.active ? "إيقاف" : "تفعيل"}
+          </Button>
+        </div>
       ),
     },
   ];
@@ -142,6 +150,7 @@ export default function BranchesPageContent() {
     status: "all",
     search: "",
     area: "all",
+    country: "all",
     sort: "todayOrders",
     order: "desc",
     page: 1,
@@ -150,6 +159,7 @@ export default function BranchesPageContent() {
     status: state.status as BranchTab,
     search: state.search,
     area: state.area,
+    country: state.country,
     sort: state.sort,
     order: state.order as "asc" | "desc",
     page: state.page,
@@ -159,12 +169,16 @@ export default function BranchesPageContent() {
 
   const [target, setTarget] = useState<BranchListItem | null>(null);
   const [toggleOpen, setToggleOpen] = useState(false);
+  const [locate, setLocate] = useState<BranchListItem | null>(null);
   const columns = useMemo(
     () =>
-      buildColumns((branch) => {
-        setTarget(branch);
-        setToggleOpen(true);
-      }),
+      buildColumns(
+        (branch) => {
+          setTarget(branch);
+          setToggleOpen(true);
+        },
+        (branch) => setLocate(branch),
+      ),
     [],
   );
 
@@ -206,6 +220,8 @@ export default function BranchesPageContent() {
           }
           search={<SearchInput value={state.search} onChange={(search) => setState({ search })} placeholder="ابحث باسم الفرع أو المغسلة" />}
           filters={
+            <>
+            <CountryFilter value={state.country} onChange={(country) => setState({ country })} />
             <SelectFilter
               aria-label="المنطقة"
               icon={<MapPin className="size-4" />}
@@ -214,6 +230,7 @@ export default function BranchesPageContent() {
               allLabel="كل المناطق"
               options={Object.entries(AREAS).map(([value, label]) => ({ value, label }))}
             />
+            </>
           }
         />
         <DataTable
@@ -255,6 +272,7 @@ export default function BranchesPageContent() {
       </section>
 
       <ToggleBranchDialog branch={target} open={toggleOpen} onOpenChange={setToggleOpen} />
+      <BranchLocationDialog branch={locate} open={Boolean(locate)} onOpenChange={(open) => !open && setLocate(null)} onSaved={() => refetch()} />
     </div>
   );
 }

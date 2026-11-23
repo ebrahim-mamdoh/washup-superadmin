@@ -138,6 +138,7 @@ export type WashListMeta = {
 export interface WashListParams extends ListParams {
   status?: BusinessStatus | "all";
   area?: string;
+  country?: string;
 }
 
 export interface WashBranchSummary extends Branch {
@@ -221,6 +222,7 @@ export interface BranchListItem extends Branch {
 export interface BranchListParams extends ListParams {
   area?: string;
   status?: "all" | "active" | "inactive";
+  country?: string;
 }
 
 export interface ToggleBranchPayload {

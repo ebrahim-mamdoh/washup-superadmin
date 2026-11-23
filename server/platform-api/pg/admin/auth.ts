@@ -9,13 +9,16 @@ import { logAudit } from "../platform";
 import { route } from "../router";
 import { type Q, db } from "../sql";
 
-/** Signed-in identity → active admin profile, or null. */
+/**
+ * Signed-in identity → active Super Admin profile, or null. Checked on every request (GAP-003):
+ * this panel and its API are for role `super` only; other admin roles have no access here.
+ */
 export async function resolveAdmin(q: Q, identity: Identity): Promise<AdminUser | null> {
   const [admin] =
     identity.kind === "supabase"
       ? await adminsWhere(q, q`a.user_id = ${identity.userId}`)
       : await adminsWhere(q, q`a.id = ${identity.profileId}`);
-  return admin && admin.status === "active" ? admin : null;
+  return admin && admin.status === "active" && admin.role === "super" ? admin : null;
 }
 
 export const authRoutes = [
@@ -38,7 +41,7 @@ export const authRoutes = [
         session.identity.kind === "supabase"
           ? await adminsWhere(sql, sql`a.user_id = ${session.identity.userId}`)
           : await adminsWhere(sql, sql`a.id = ${session.identity.profileId}`);
-      if (!admin) throw new MockApiError("هذا الحساب غير مرتبط بملف إداري في كارزن", 403);
+      if (!admin) throw new MockApiError("هذا الحساب غير مرتبط بملف إداري في Wash Up", 403);
       if (admin.status !== "active") {
         throw new MockApiError("هذا الحساب موقوف. تواصل مع مدير النظام.", 403);
       }

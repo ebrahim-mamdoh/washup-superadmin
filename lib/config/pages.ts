@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
 
-export const SITE_NAME = "Carzen Super Admin";
+export const SITE_NAME = "Wash Up";
 
 /** Central page metadata (Arabic titles), mirroring aroma's `lib/config/pages.ts`. */
 export const pagesConfig = {
-  "/login": { title: "تسجيل الدخول", description: "دخول لوحة السوبر أدمن لمنصة كارزن" },
+  "/login": { title: "تسجيل الدخول", description: "دخول لوحة السوبر أدمن لمنصة Wash Up" },
   "/dashboard": { title: "لوحة المؤشرات", description: "مؤشرات المنصة اللحظية والتنبيهات" },
   "/washes": { title: "المغاسل", description: "إدارة المغاسل الشريكة وحالاتها" },
   "/washes/[id]": { title: "تفاصيل المغسلة", description: "الملف الكامل للمغسلة" },
   "/applications": { title: "طلبات الانضمام", description: "مراجعة طلبات انضمام المغاسل" },
   "/applications/[id]": { title: "مراجعة طلب", description: "مراجعة طلب انضمام مغسلة" },
   "/branches": { title: "الفروع", description: "كل فروع المغاسل على المنصة" },
+  "/areas": { title: "المناطق", description: "مناطق الخدمة والدبوس المستخدم لأقرب منطقة" },
+  "/countries": { title: "الدول", description: "الدول المتاحة والعملات والمناطق الزمنية" },
   "/orders": { title: "الحجوزات والطلبات", description: "متابعة كل الحجوزات على المنصة" },
   "/orders/[id]": { title: "تفاصيل الحجز", description: "القصة الكاملة للحجز" },
   "/customers": { title: "العملاء", description: "إدارة حسابات العملاء" },

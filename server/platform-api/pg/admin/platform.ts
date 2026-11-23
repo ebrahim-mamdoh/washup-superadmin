@@ -57,8 +57,18 @@ async function loadSettings(q: Q): Promise<PlatformSettings> {
     catalog(q, "amenities"),
   ]);
   const byKey = new Map(rows.map((r) => [r.key, r.value]));
+  const WASHUP_GENERAL = {
+    platformName: "Wash Up",
+    currency: "EGP",
+    supportPhone: "+20 150 000 1111",
+    supportEmail: "support@washup.app",
+    supportHours: { ar: "يومياً ٩:٠٠ ص – ٩:٠٠ م", en: "Daily 9:00 AM – 9:00 PM" },
+  };
+  const rawGeneral = { ...WASHUP_GENERAL, ...((byKey.get("general") as Record<string, unknown>) ?? {}) };
+  if (!rawGeneral.platformName || rawGeneral.platformName === "Carzen") rawGeneral.platformName = "Wash Up";
+  if (!rawGeneral.supportEmail || String(rawGeneral.supportEmail).includes("carzen.demo")) rawGeneral.supportEmail = "support@washup.app";
   return {
-    general: ordered(byKey.get("general") ?? {}, KEY_ORDER.general) as PlatformSettings["general"],
+    general: ordered(rawGeneral, KEY_ORDER.general) as PlatformSettings["general"],
     bookingDefaults: ordered(byKey.get("booking_defaults") ?? {}, KEY_ORDER.bookingDefaults) as PlatformSettings["bookingDefaults"],
     legal: ordered(byKey.get("legal") ?? {}, KEY_ORDER.legal) as PlatformSettings["legal"],
     catalogs: { areas, serviceCategories, amenities },
@@ -233,7 +243,7 @@ export const platformRoutes = [
     const q = (query.get("q") ?? "").replaceAll("\0", "").trim();
     if (q.length < 2) return ok({ query: q, results: [] });
     const like = searchPattern(new URLSearchParams({ search: q }))!;
-    const qNorm = q.replace(/[\s-]/g, "").toUpperCase();
+    const rawPlate = q;
 
     // Top 5 per group. The mock keeps seed insertion order, which the database does not store:
     // people and washes come oldest first (= seed order), orders exact match first, then by number.
@@ -247,7 +257,7 @@ export const platformRoutes = [
         select v.id, 'plates' as "group", v.plate as title, v.make || ' ' || v.model || ' — ' || coalesce(cu.name, '') as subtitle,
                '/customers/' || v.customer_id as href
         from public.vehicles v left join public.customers cu on cu.id = v.customer_id
-        where strpos(v.plate_normalized, ${qNorm}) > 0
+        where length(public.normalize_plate(${rawPlate})) >= 2 and strpos(v.plate_normalized, public.normalize_plate(${rawPlate})) > 0
         order by cu.created_at, v.id limit 5`,
       sql<SearchResult[]>`
         select b.id, 'washes' as "group", b.name ->> 'ar' as title, coalesce(ow.name, '') as subtitle, '/washes/' || b.id as href

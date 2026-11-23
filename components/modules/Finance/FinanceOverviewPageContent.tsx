@@ -266,10 +266,6 @@ export default function FinanceOverviewPageContent() {
   const [metric, setMetric] = useState<Metric>("gmv");
   const { data, isLoading, isPlaceholderData, error, refetch, isRefetching } = useFinanceOverview(period, country);
 
-  if (error && !data) {
-    return <ErrorState message={error.message} onRetry={() => refetch()} isRetrying={isRefetching} />;
-  }
-
   const hasSales = Boolean(data?.series.some((p) => p.gmv > 0));
   const maxTop = data?.topWashes[0]?.gmv || 1;
   const singleCurrency = data?.byCurrency && Object.values(data.byCurrency)[0];
@@ -293,6 +289,7 @@ export default function FinanceOverviewPageContent() {
         }
       />
 
+      {error && !data ? <ErrorState message={error.message} onRetry={() => refetch()} isRetrying={isRefetching} /> : (
       <div className={cn("space-y-6 transition-opacity", isPlaceholderData && "opacity-60")} aria-busy={isLoading || isPlaceholderData}>
         {data ? (
           country === "all" && data.byCurrency && Object.keys(data.byCurrency).length > 0 ? (
@@ -419,6 +416,7 @@ export default function FinanceOverviewPageContent() {
           </SectionCard>
         </div>
       </div>
+      )}
     </div>
   );
 }
