@@ -1,4 +1,4 @@
--- NOT APPLIED — to be reviewed and applied by the lead
+-- APPLIED to tbcmgdwzarfdgzzmmele on 2026-11-26 by the lead (recorded in schema_migrations as 20261126100000).
 --
 -- GAP-095 (admin part): per-admin read state for the Super Admin notification inbox.
 -- Until now `admin_notifications.read` is one flag shared by every admin, so one admin's
