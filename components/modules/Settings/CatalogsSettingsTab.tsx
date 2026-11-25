@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Info, MapPin, Plus, Sparkles, Trash2, Wrench } from "lucide-react";
+import Link from "next/link";
+import { Info, Plus, Sparkles, Trash2, Wrench } from "lucide-react";
 
 import { SaveSectionDialog, SettingsSaveBar } from "@/components/modules/Settings/SettingsSaveBar";
 import { useSaveSection } from "@/components/modules/Settings/use-save-section";
@@ -19,8 +20,8 @@ type Catalogs = PlatformSettings["catalogs"];
 type CatalogKey = keyof Catalogs;
 type CatalogItem = Catalogs[CatalogKey][number];
 
-const SECTIONS: { key: CatalogKey; title: string; description: string; icon: ReactNode; placeholder: { ar: string; en: string } }[] = [
-  { key: "areas", title: "المناطق", description: "فلتر المنطقة في تطبيق العميل ومنطقة الفرع عند تسجيل المغسلة.", icon: <MapPin />, placeholder: { ar: "مثال: الرحاب", en: "e.g. Rehab City" } },
+// Areas are edited only on the Areas page, with their country and map pin (GAP-088).
+const SECTIONS: { key: Exclude<CatalogKey, "areas">; title: string; description: string; icon: ReactNode; placeholder: { ar: string; en: string } }[] = [
   { key: "serviceCategories", title: "فئات الخدمات", description: "تصنيف الخدمات التي تضيفها المغاسل وفلتر نوع الغسيل.", icon: <Wrench />, placeholder: { ar: "مثال: تلميع", en: "e.g. Polishing" } },
   { key: "amenities", title: "المرافق", description: "مزايا الفرع التي تظهر في صفحته وفي فلاتر البحث.", icon: <Sparkles />, placeholder: { ar: "مثال: موقف خاص", en: "e.g. Private parking" } },
 ];
@@ -250,8 +251,12 @@ export function CatalogsSettingsTab({ value, onDirtyChange }: CatalogsSettingsTa
       <div className="flex items-start gap-3 rounded-xl border border-info/30 bg-info/5 px-4 py-3 text-xs leading-relaxed">
         <Info className="mt-0.5 size-4 shrink-0 text-info" />
         <p>
-          <span className="font-semibold">الكتالوجات مصدر فلاتر تطبيق العميل ونماذج المغاسل</span> — تنعكس التغييرات فور الحفظ. العنصر المعطّل يختفي من
-          الفلاتر والاختيارات الجديدة، ولا يُحذف من بيانات المغاسل الحالية.
+          <span className="font-semibold">فئات الخدمات والمرافق</span> — الأسماء تُحفظ فورًا. حاليًا لا يُخفي تعطيل عنصر الخدمات أو الفروع المرتبطة به في
+          تطبيق العميل أو بوابة المغاسل (الربط قيد التنفيذ)، ولا يُحذف أي عنصر محفوظ. المناطق تُدار من صفحة{" "}
+          <Link href="/areas" className="font-semibold text-primary underline-offset-2 hover:underline">
+            المناطق
+          </Link>{" "}
+          مع الدولة والموقع على الخريطة.
         </p>
       </div>
 
@@ -278,12 +283,12 @@ export function CatalogsSettingsTab({ value, onDirtyChange }: CatalogsSettingsTa
         open={saver.reasonOpen}
         onOpenChange={saver.setReasonOpen}
         sectionLabel="الكتالوجات"
-        impact="تتحدث فلاتر تطبيق العميل واختيارات نماذج المغاسل فورًا. تُسجل القوائم القديمة والجديدة في سجل التدقيق."
+        impact="تُحفظ الأسماء وحالة التفعيل وتُسجل القوائم القديمة والجديدة في سجل التدقيق."
         isPending={saver.isPending}
         onConfirm={(reason) => saver.save(trimAll(current), reason, () => setDraft(null))}
       >
         <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-          سيتم حفظ <span className="num font-semibold text-foreground">{changeCount}</span> تغيير على المناطق وفئات الخدمات والمرافق.
+          سيتم حفظ <span className="num font-semibold text-foreground">{changeCount}</span> تغيير على فئات الخدمات والمرافق.
         </p>
       </SaveSectionDialog>
     </div>

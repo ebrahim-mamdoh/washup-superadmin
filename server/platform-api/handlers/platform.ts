@@ -37,8 +37,20 @@ export const platformRoutes = [
       }
     }
     const old = db.settings[section];
-    // Section shapes are validated by the typed client form; keep the mock permissive.
-    (db.settings as unknown as Record<string, unknown>)[section] = body.value;
+    if (section === "catalogs") {
+      // Upsert only, never delete; areas are edited on /admin/areas (GAP-088).
+      const v = body.value as Partial<typeof db.settings.catalogs>;
+      const next = structuredClone(db.settings.catalogs);
+      for (const key of ["serviceCategories", "amenities"] as const) {
+        const list = Array.isArray(v[key]) ? v[key] : [];
+        const ids = new Set(list.map((i) => i.id));
+        next[key] = [...list, ...next[key].filter((i) => !ids.has(i.id))];
+      }
+      db.settings.catalogs = next;
+    } else {
+      // Section shapes are validated by the typed client form; keep the mock permissive.
+      (db.settings as unknown as Record<string, unknown>)[section] = body.value;
+    }
     logAudit(db, { actorId: admin.id, action: "update_settings", entity: "settings", entityId: section, oldValue: old, newValue: body.value, reason });
     return ok(db.settings, "تم حفظ الإعدادات");
   }),

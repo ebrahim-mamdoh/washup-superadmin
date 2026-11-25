@@ -99,7 +99,8 @@ export function LegalSettingsTab({ value, onDirtyChange }: LegalSettingsTabProps
     <>
       <form onSubmit={onSubmit} noValidate className="space-y-4">
         <p className="rounded-xl border border-border/80 bg-muted/40 px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
-          النصوص تظهر كما هي في تطبيق العميل حسب لغة المستخدم. راجع النسختين العربية والإنجليزية معًا حتى تبقى متطابقتين في المعنى.
+          تُحفظ النصوص هنا كنسخة مرجعية. تطبيق العميل يعرض حاليًا نصوصًا مدمجة فيه ولا يقرأ هذه النسخة بعد (الربط قيد التنفيذ). راجع النسختين
+          العربية والإنجليزية معًا حتى تبقيا متطابقتين في المعنى.
         </p>
         {DOCS.map((doc) => (
           <SectionCard key={doc.ar} icon={doc.icon} title={doc.title} description={doc.description}>
@@ -122,7 +123,7 @@ export function LegalSettingsTab({ value, onDirtyChange }: LegalSettingsTabProps
         open={saver.reasonOpen}
         onOpenChange={saver.setReasonOpen}
         sectionLabel="النصوص القانونية"
-        impact="يظهر النص الجديد فورًا لكل مستخدمي تطبيق العميل. تُحفظ النسخة السابقة في سجل التدقيق."
+        impact="تُحفظ النسخة الجديدة كمرجع ولا تظهر في تطبيق العميل بعد. تُحفظ النسخة السابقة في سجل التدقيق."
         isPending={saver.isPending}
         onConfirm={(reason) => pending && saver.save(fromForm(pending), reason, (saved) => reset(toForm(saved)))}
       />

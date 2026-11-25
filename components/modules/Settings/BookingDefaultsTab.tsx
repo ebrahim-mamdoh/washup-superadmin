@@ -69,7 +69,7 @@ export function BookingDefaultsTab({ value, onDirtyChange }: BookingDefaultsTabP
         <SectionCard
           icon={<CalendarClock />}
           title="قواعد الحجز الافتراضية"
-          description="القيم التي يبدأ بها كل فرع جديد عند قبول المغسلة، ويمكن للفرع تعديلها لاحقًا من تطبيق المغسلة."
+          description="القيم التي يبدأ بها الفرع الأول لكل مغسلة تُقبل من طلبات الانضمام، ويمكن للفرع تعديلها لاحقًا. الفروع التي يضيفها المالك من بوابة المغاسل لا تستخدمها بعد."
         >
           <div className="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
             {FIELDS.map((f) => {
@@ -133,7 +133,7 @@ export function BookingDefaultsTab({ value, onDirtyChange }: BookingDefaultsTabP
         open={saver.reasonOpen}
         onOpenChange={saver.setReasonOpen}
         sectionLabel="إعدادات الحجز"
-        impact="تُطبق القيم الجديدة على الفروع التي تنضم بعد الحفظ؛ إعدادات الفروع الحالية لا تتغير. تُسجل القيم القديمة والجديدة في سجل التدقيق."
+        impact="تُطبق القيم الجديدة على الفرع الأول للمغاسل التي تُقبل بعد الحفظ؛ إعدادات الفروع الحالية لا تتغير. تُسجل القيم القديمة والجديدة في سجل التدقيق."
         isPending={saver.isPending}
         onConfirm={(reason) => pending && saver.save(pending, reason, (saved) => reset(saved))}
       />

@@ -85,11 +85,12 @@ export function NotificationTemplatesTab({ templates }: { templates: Template[] 
       <div className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
         <Eye className="mt-0.5 size-4 shrink-0" />
         <p>
-          معاينة للعرض فقط — تعديل القوالب غير متاح في هذه المرحلة. المتغيرات المميزة مثل{" "}
+          معاينة مرجعية فقط — تعديل القوالب غير متاح، والإشعارات الفعلية تُرسل حاليًا بنصوص ثابتة من قاعدة البيانات ولا تستخدم هذه القوالب بعد.
+          المتغيرات المميزة مثل{" "}
           <code dir="ltr" className="num rounded-md bg-primary/10 px-1.5 py-px text-[11px] font-medium text-primary">
             branch
           </code>{" "}
-          تُستبدل بالقيم الفعلية عند الإرسال.
+          توضح مكان القيم الفعلية.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">

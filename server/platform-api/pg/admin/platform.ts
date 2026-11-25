@@ -77,8 +77,11 @@ async function loadSettings(q: Q): Promise<PlatformSettings> {
   };
 }
 
-/** Replaces one catalog with the submitted list (order = sort_order). Items left out are deleted. */
-async function saveCatalog(t: Q, key: CatalogKey, items: unknown) {
+/**
+ * Upserts one catalog from the submitted list (order = sort_order). Nothing is deleted (GAP-088): a
+ * stale tab must not drop items someone else added; switching an item off is the way to retire it.
+ */
+async function saveCatalog(t: Q, key: Exclude<CatalogKey, "areas">, items: unknown) {
   const list = (Array.isArray(items) ? items : []).map((raw, i) => {
     const item = (raw ?? {}) as { id?: unknown; name?: { ar?: unknown; en?: unknown }; active?: unknown };
     return {
@@ -90,7 +93,6 @@ async function saveCatalog(t: Q, key: CatalogKey, items: unknown) {
   });
   if (list.some((i) => !i.id)) throw new MockApiError("معرّف العنصر مطلوب في القوائم", 422);
   const table = t("public." + CATALOG_TABLES[key]);
-  await t`delete from ${table} where id <> all(${list.map((i) => i.id)}::text[])`;
   if (list.length) {
     await t`
       insert into ${table} (id, name, active, sort_order)
@@ -152,7 +154,8 @@ export const platformRoutes = [
         const old = (await loadSettings(t))[section];
         if (section === "catalogs") {
           const v = body.value as Record<string, unknown>;
-          for (const key of Object.keys(CATALOG_TABLES) as CatalogKey[]) {
+          // Areas are edited only on /admin/areas with a country and a map pin (GAP-088): ignored here.
+          for (const key of ["serviceCategories", "amenities"] as const) {
             if (v[key] !== undefined) await saveCatalog(t, key, v[key]);
           }
         } else {
