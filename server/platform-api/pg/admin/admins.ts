@@ -61,12 +61,20 @@ export const adminRoutes = [
       const [row] = await t<{ id: string }[]>`
         insert into public.admin_users (name, email, role, status) values (${name}, ${email}, ${role}, 'active') returning id`;
       await logAudit(t, { actorId: admin.id, action: "create_admin_user", entity: "admins", entityId: row.id, newValue: { email, role } });
-      // Local auth accepts the demo password for any active profile; otherwise create the Supabase Auth login.
-      const login = isLocalAuth() ? null : await createLogin({ email });
-      if (login && "userId" in login) await t`update public.admin_users set user_id = ${login.userId} where id = ${row.id}`;
-      return { admin: await adminById(t, row.id), login };
+      return { admin: await adminById(t, row.id) };
     });
-    return ok(record.admin, `تمت إضافة ${name} — ${loginNotice(record.login)}`);
+    // Local auth accepts the demo password for any active profile; otherwise create the Supabase Auth
+    // login AFTER the profile committed (GAP-045): a rolled-back insert never leaves an orphan Auth user.
+    let notice: string;
+    try {
+      const login = isLocalAuth() ? null : await createLogin({ email });
+      if (login && "userId" in login) await db()`update public.admin_users set user_id = ${login.userId} where id = ${record.admin.id}`;
+      notice = loginNotice(login);
+    } catch (error) {
+      console.error("[admins] login creation failed", error);
+      notice = "أُضيف الحساب لكن تعذر إنشاء بيانات الدخول الآن — تواصل مع الدعم الفني";
+    }
+    return ok(record.admin, `تمت إضافة ${name} — ${notice}`);
   }),
 
   route("PATCH", "/admin/admins/:id", async ({ params, body, admin }) => {
