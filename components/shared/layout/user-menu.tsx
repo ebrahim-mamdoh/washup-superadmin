@@ -18,6 +18,7 @@ import {
 import { useLogout } from "@/hooks/use-auth";
 import { useResetDemoData } from "@/hooks/use-platform";
 import { ADMIN_ROLE } from "@/lib/constants/labels";
+import { canAccess } from "@/lib/admin-access";
 import { useAuthStore } from "@/lib/store/auth-store";
 
 export function UserMenu() {
@@ -28,6 +29,9 @@ export function UserMenu() {
   const [resetOpen, setResetOpen] = useState(false);
 
   if (!admin) return null;
+  // Demo reset exists only on the bundled demo data, for Super Admin (GAP-046); the matrix link per role (GAP-012).
+  const canReset = admin.demoData === true && admin.role === "super";
+  const canSeeRoles = canAccess(admin, "roles");
 
   return (
     <>
@@ -47,15 +51,19 @@ export function UserMenu() {
             </DropdownMenuLabel>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push("/roles")}>
-            <ShieldCheck />
-            الأدوار والصلاحيات
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setResetOpen(true)}>
-            <RotateCcw />
-            إعادة ضبط بيانات العرض
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          {canSeeRoles ? (
+            <DropdownMenuItem onClick={() => router.push("/roles")}>
+              <ShieldCheck />
+              الأدوار والصلاحيات
+            </DropdownMenuItem>
+          ) : null}
+          {canReset ? (
+            <DropdownMenuItem onClick={() => setResetOpen(true)}>
+              <RotateCcw />
+              إعادة ضبط بيانات العرض
+            </DropdownMenuItem>
+          ) : null}
+          {canSeeRoles || canReset ? <DropdownMenuSeparator /> : null}
           <DropdownMenuItem
             variant="destructive"
             onClick={() =>

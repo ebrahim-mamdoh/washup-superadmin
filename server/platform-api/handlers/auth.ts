@@ -1,15 +1,21 @@
 import "server-only";
 
-import type { AdminUser } from "@/types/auth";
+import type { AdminSession, AdminUser } from "@/types/auth";
 import { logAudit, nid, now } from "../db";
 import { MockApiError, ok } from "../http";
+import { permissionsFor } from "../permissions";
 import { route } from "../router";
-import type { StoredAdmin } from "../schema";
+import type { MockDatabase, StoredAdmin } from "../schema";
 
 export function toPublicAdmin(admin: StoredAdmin): AdminUser {
   const { password: _password, ...rest } = admin;
   void _password;
   return rest;
+}
+
+/** The signed-in admin with the role's permissions; the mock is the demo data source (GAP-046). */
+function toSession(db: MockDatabase, admin: StoredAdmin): AdminSession {
+  return { ...toPublicAdmin(admin), permissions: permissionsFor(admin.role, db.roles), demoData: true };
 }
 
 export const authRoutes = [
@@ -30,12 +36,6 @@ export const authRoutes = [
       if (admin.status !== "active") {
         throw new MockApiError("هذا الحساب موقوف. تواصل مع مدير النظام.", 403);
       }
-      if (admin.role !== "super") {
-        throw new MockApiError(
-          "هذه اللوحة مخصصة لحسابات Super Admin فقط. استخدم لوحة الإدارة العامة لدورك.",
-          403,
-        );
-      }
 
       const token = `sa_${nid("tok")}_${Math.random().toString(36).slice(2, 10)}`;
       db.sessions[token] = admin.id;
@@ -49,7 +49,7 @@ export const authRoutes = [
 
       // Mock sessions don't expire: the token is its own refresh token.
       return ok(
-        { access_token: token, token_type: "Bearer", refresh_token: token, expires_in: null, admin: toPublicAdmin(admin) },
+        { access_token: token, token_type: "Bearer", refresh_token: token, expires_in: null, admin: toSession(db, admin) },
         "تم تسجيل الدخول بنجاح",
       );
     },
@@ -61,14 +61,14 @@ export const authRoutes = [
     "/admin/auth/refresh",
     ({ db, body }) => {
       const token = String(body.refresh_token ?? "");
-      const admin = db.admins.find((a) => a.id === db.sessions[token] && a.status === "active" && a.role === "super");
+      const admin = db.admins.find((a) => a.id === db.sessions[token] && a.status === "active");
       if (!admin) throw new MockApiError("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى", 401);
       return ok({ access_token: token, token_type: "Bearer", refresh_token: token, expires_in: null });
     },
     true,
   ),
 
-  route("GET", "/admin/auth/me", ({ admin }) => ok(toPublicAdmin(admin))),
+  route("GET", "/admin/auth/me", ({ db, admin }) => ok(toSession(db, admin))),
 
   route("POST", "/admin/auth/logout", ({ db, token }) => {
     if (token) delete db.sessions[token];

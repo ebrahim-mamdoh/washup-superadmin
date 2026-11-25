@@ -9,6 +9,7 @@ import postgres from "postgres";
 import { MockApiError, ok, requireText } from "../../http";
 import { ADMIN_NOTIFICATION_COLS, BUSINESS_FROM, PHONE, adminNotificationsWhere } from "../entities";
 import { paged, searchPattern } from "../list";
+import { SEARCH_GROUP_MODULE, hasLevel, visibleNotificationTypes } from "../../permissions";
 import { logAudit } from "../platform";
 import { route } from "../router";
 import { type Q, db, tx } from "../sql";
@@ -96,6 +97,29 @@ async function saveCatalog(t: Q, key: CatalogKey, items: unknown) {
       select c.id, c.name, c.active, c.sort from jsonb_to_recordset(${t.json(list)}::jsonb) as c(id text, name jsonb, active boolean, sort smallint)
       on conflict (id) do update set name = excluded.name, active = excluded.active, sort_order = excluded.sort_order`;
   }
+}
+
+const RECEIPTS_KEY = "__WASHUP_ADMIN_NOTIFICATION_READS__";
+type GlobalWithReceipts = typeof globalThis & { [RECEIPTS_KEY]?: { exists: boolean; checkedAt: number } };
+
+/**
+ * Whether the per-admin read receipts table exists (GAP-095; created by a migration the lead applies).
+ * Cached: "exists" for good, "missing" re-checked every minute so applying it needs no redeploy.
+ */
+async function hasReadReceipts(q: Q): Promise<boolean> {
+  const g = globalThis as GlobalWithReceipts;
+  const hit = g[RECEIPTS_KEY];
+  if (hit && (hit.exists || Date.now() - hit.checkedAt < 60_000)) return hit.exists;
+  const [{ present: exists }] = await q<{ present: boolean }[]>`select to_regclass('public.admin_notification_reads') is not null as present`;
+  g[RECEIPTS_KEY] = { exists, checkedAt: Date.now() };
+  return exists;
+}
+
+/** "Read by this admin" (receipts) or the legacy shared flag. */
+function readExpr(q: Q, receipts: boolean, adminId: string) {
+  return receipts
+    ? q`exists (select 1 from public.admin_notification_reads r where r.notification_id = an.id and r.admin_id = ${adminId})`
+    : q`an.read`;
 }
 
 /** Audit list columns (alias al). Actor name follows the mock: admin, then staff, "النظام" for the seed, else the id. */
@@ -191,37 +215,65 @@ export const platformRoutes = [
   }),
 
   // ── Notifications ─────────────────────────────────────────
-  route("GET", "/admin/notifications", async ({ query }) => {
+  // Each admin sees only the types of modules they can open (GAP-012). Read state is per admin once
+  // `admin_notification_reads` exists (GAP-095, docs/db/…_admin_notification_reads.sql); until then
+  // it falls back to the shared `read` column.
+  route("GET", "/admin/notifications", async ({ query, admin }) => {
     const sql = db();
     const filter = query.get("filter");
+    const receipts = await hasReadReceipts(sql);
+    const isRead = readExpr(sql, receipts, admin.id);
+    const visible = sql`an.type::text = any(${visibleNotificationTypes(admin.permissions)}::text[])`;
     const cond =
-      filter === "unread" ? sql`not an.read` : filter && filter !== "all" ? sql`an.type::text = ${filter}` : sql`true`;
+      filter === "unread"
+        ? sql`${visible} and not ${isRead}`
+        : filter && filter !== "all"
+          ? sql`${visible} and an.type::text = ${filter}`
+          : visible;
     const [[{ total }], [{ unread }]] = await Promise.all([
       sql<{ total: number }[]>`select count(*)::int as total from public.admin_notifications an where ${cond}`,
-      sql<{ unread: number }[]>`select count(*)::int as unread from public.admin_notifications where not read`,
+      sql<{ unread: number }[]>`select count(*)::int as unread from public.admin_notifications an where ${visible} and not ${isRead}`,
     ]);
     const { items, pagination } = await paged(query, total, 20, (limit, offset) =>
-      adminNotificationsWhere(sql, cond, sql`order by an.created_at desc, an.id limit ${limit} offset ${offset}`),
+      sql<AdminNotification[]>`
+        select an.id, an.type, an.title, an.body, an.href, ${isRead} as read, an.created_at as "createdAt"
+        from public.admin_notifications an where ${cond}
+        order by an.created_at desc, an.id limit ${limit} offset ${offset}`,
     );
     return ok(items, "OK", { pagination, meta: { unread } });
   }),
 
-  route("POST", "/admin/notifications/:id/read", async ({ params }) => {
+  route("POST", "/admin/notifications/:id/read", async ({ params, admin }) => {
     const sql = db();
+    const visible = visibleNotificationTypes(admin.permissions);
+    const [found] = await adminNotificationsWhere(sql, sql`an.id = ${params.id} and an.type::text = any(${visible}::text[])`);
+    if (!found) throw new MockApiError("الإشعار غير موجود", 404);
+    if (await hasReadReceipts(sql)) {
+      await sql`insert into public.admin_notification_reads (notification_id, admin_id) values (${found.id}, ${admin.id}) on conflict do nothing`;
+      return ok({ ...found, read: true });
+    }
     const [n] = await sql<AdminNotification[]>`
-      update public.admin_notifications an set read = true where an.id = ${params.id}
+      update public.admin_notifications an set read = true where an.id = ${found.id}
       returning ${sql.unsafe(ADMIN_NOTIFICATION_COLS)}`;
-    if (!n) throw new MockApiError("الإشعار غير موجود", 404);
     return ok(n);
   }),
 
-  route("POST", "/admin/notifications/read-all", async () => {
-    await db()`update public.admin_notifications set read = true where not read`;
+  route("POST", "/admin/notifications/read-all", async ({ admin }) => {
+    const sql = db();
+    const visible = visibleNotificationTypes(admin.permissions);
+    if (await hasReadReceipts(sql)) {
+      await sql`
+        insert into public.admin_notification_reads (notification_id, admin_id)
+        select an.id, ${admin.id} from public.admin_notifications an where an.type::text = any(${visible}::text[])
+        on conflict do nothing`;
+    } else {
+      await sql`update public.admin_notifications set read = true where not read and type::text = any(${visible}::text[])`;
+    }
     return ok(null, "تم تعليم كل الإشعارات كمقروءة");
   }),
 
   // ── Global search (⌘K) ────────────────────────────────────
-  route("GET", "/admin/search", async ({ query }) => {
+  route("GET", "/admin/search", async ({ query, admin }) => {
     const sql = db();
     const q = query.get("q")?.trim() ?? "";
     if (q.length < 2) return ok({ query: q, results: [] });
@@ -267,7 +319,9 @@ export const platformRoutes = [
         where c.ticket ilike ${like}
         order by c.created_at desc, c.id limit 5`,
     ]);
-    return ok({ query: q, results: [...customers, ...plates, ...washes, ...branches, ...orders, ...complaints] });
+    // Only groups of modules the caller may open (GAP-012).
+    const results = [...customers, ...plates, ...washes, ...branches, ...orders, ...complaints];
+    return ok({ query: q, results: results.filter((r) => hasLevel(admin.permissions, SEARCH_GROUP_MODULE[r.group], "view")) });
   }),
 
   // ── Demo utilities ────────────────────────────────────────

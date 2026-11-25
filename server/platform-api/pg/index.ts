@@ -3,6 +3,7 @@ import "server-only";
 import postgres from "postgres";
 
 import { MockApiError, fail } from "../http";
+import { FORBIDDEN, canAccess, routeAccess } from "../permissions";
 import { type HttpMethod, matchPath } from "../router";
 import { resolveAdmin } from "./admin/auth";
 import { ADMIN_ROUTES } from "./admin";
@@ -60,7 +61,11 @@ export async function handleSupabaseRequest(req: Request, segments: string[]): P
       return await (matched.def as PgRouteDef<PgVendorContext>).handler({ ...base, actor: actor! });
     }
     const admin = identity ? await resolveAdmin(sql, identity) : null;
-    if (!matched.def.isPublic && !admin) return fail(EXPIRED, 401);
+    if (!matched.def.isPublic) {
+      if (!admin) return fail(EXPIRED, 401);
+      // Per-route permission from the roles matrix (GAP-012); unmapped routes are Super Admin only.
+      if (!canAccess(admin.role, admin.permissions, routeAccess(method, matched.def.path))) return fail(FORBIDDEN, 403);
+    }
     return await (matched.def as PgRouteDef<PgAdminContext>).handler({ ...base, admin: admin! });
   } catch (error) {
     if (error instanceof MockApiError) return fail(error.message, error.httpStatus, error.errors);

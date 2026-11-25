@@ -43,6 +43,8 @@ const STATUS_TABS: StatusFilter[] = ["all", "active", "inactive"];
 
 export default function AdminsPageContent() {
   const me = useAuthStore((s) => s.admin);
+  // Only Super Admin invites admins, changes roles or (de)activates accounts (GAP-012).
+  const canManage = me?.role === "super";
   const { data, isLoading, isFetching, error, refetch } = useAdmins();
 
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -199,10 +201,12 @@ export default function AdminsPageContent() {
         title="المسؤولون"
         description="حسابات فريق إدارة المنصة وأدوارهم. لا يمكن إيقاف حسابك أو تغيير دورك بنفسك، ويجب أن يبقى Super Admin نشط واحد على الأقل."
         actions={
-          <Button size="lg" onClick={() => setInviteOpen(true)}>
-            <UserPlus />
-            دعوة مسؤول
-          </Button>
+          canManage ? (
+            <Button size="lg" onClick={() => setInviteOpen(true)}>
+              <UserPlus />
+              دعوة مسؤول
+            </Button>
+          ) : undefined
         }
       />
 
@@ -275,7 +279,7 @@ export default function AdminsPageContent() {
           }
         />
         <DataTable
-          columns={columns}
+          columns={canManage ? columns : columns.filter((c) => c.key !== "actions")}
           rows={rows}
           rowKey={(a) => a.id}
           isLoading={isLoading}
@@ -308,12 +312,12 @@ export default function AdminsPageContent() {
                   icon: <UsersRound />,
                   title: "لا يوجد مسؤولون بعد",
                   description: "ادعُ أول عضو في فريق الإدارة وحدد دوره.",
-                  action: (
+                  action: canManage ? (
                     <Button size="sm" onClick={() => setInviteOpen(true)}>
                       <UserPlus />
                       دعوة مسؤول
                     </Button>
-                  ),
+                  ) : undefined,
                 }
           }
         />

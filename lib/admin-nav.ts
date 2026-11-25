@@ -1,4 +1,6 @@
 import type { ComponentType } from "react";
+
+import type { PermissionKey } from "@/types/admins";
 import {
   BadgePercent,
   BriefcaseBusiness,
@@ -29,6 +31,8 @@ export type AdminNavItem = {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
+  /** Roles-matrix module the page belongs to (hidden without view access, GAP-012). */
+  permission: PermissionKey;
   /** Live count rendered as a pill (sourced from the dashboard summary). */
   badge?: NavBadgeKey;
   /** Extra path prefixes that should mark this item active. */
@@ -43,51 +47,51 @@ export type AdminNavGroup = {
 export const ADMIN_NAV: AdminNavGroup[] = [
   {
     title: null,
-    items: [{ href: "/dashboard", label: "لوحة المؤشرات", icon: LayoutDashboard }],
+    items: [{ href: "/dashboard", permission: "dashboard", label: "لوحة المؤشرات", icon: LayoutDashboard }],
   },
   {
     title: "المغاسل",
     items: [
-      { href: "/washes", label: "كل المغاسل", icon: Store },
-      { href: "/applications", label: "طلبات الانضمام", icon: FilePlus2, badge: "applications" },
-      { href: "/branches", label: "الفروع", icon: MapPinned },
-      { href: "/areas", label: "المناطق", icon: Map },
-      { href: "/countries", label: "الدول", icon: Globe },
+      { href: "/washes", permission: "washes", label: "كل المغاسل", icon: Store },
+      { href: "/applications", permission: "applications", label: "طلبات الانضمام", icon: FilePlus2, badge: "applications" },
+      { href: "/branches", permission: "branches", label: "الفروع", icon: MapPinned },
+      { href: "/areas", permission: "settings", label: "المناطق", icon: Map },
+      { href: "/countries", permission: "settings", label: "الدول", icon: Globe },
     ],
   },
   {
     title: "العمليات",
     items: [
-      { href: "/orders", label: "الحجوزات والطلبات", icon: CalendarCheck2 },
-      { href: "/complaints", label: "الشكاوى", icon: MessageSquareWarning, badge: "complaints" },
-      { href: "/reviews", label: "التقييمات", icon: Star },
+      { href: "/orders", permission: "orders", label: "الحجوزات والطلبات", icon: CalendarCheck2 },
+      { href: "/complaints", permission: "complaints", label: "الشكاوى", icon: MessageSquareWarning, badge: "complaints" },
+      { href: "/reviews", permission: "reviews", label: "التقييمات", icon: Star },
     ],
   },
   {
     title: "المستخدمون",
     items: [
-      { href: "/customers", label: "العملاء", icon: Users },
-      { href: "/staff", label: "الملاك والموظفون", icon: BriefcaseBusiness },
+      { href: "/customers", permission: "customers", label: "العملاء", icon: Users },
+      { href: "/staff", permission: "staff", label: "الملاك والموظفون", icon: BriefcaseBusiness },
     ],
   },
   {
     title: "المالية والتسويق",
     items: [
-      { href: "/finance", label: "الملخص المالي", icon: ChartPie },
-      { href: "/finance/transactions", label: "المعاملات", icon: Receipt },
-      { href: "/finance/commission", label: "العمولات", icon: BadgePercent },
-      { href: "/finance/payouts", label: "مدفوعات المغاسل", icon: Wallet },
-      { href: "/offers", label: "عروض المنصة", icon: Tag },
+      { href: "/finance", permission: "finance", label: "الملخص المالي", icon: ChartPie },
+      { href: "/finance/transactions", permission: "finance", label: "المعاملات", icon: Receipt },
+      { href: "/finance/commission", permission: "finance", label: "العمولات", icon: BadgePercent },
+      { href: "/finance/payouts", permission: "finance", label: "مدفوعات المغاسل", icon: Wallet },
+      { href: "/offers", permission: "offers", label: "عروض المنصة", icon: Tag },
     ],
   },
   {
     title: "النظام",
     items: [
-      { href: "/admins", label: "المسؤولون", icon: UserCog },
-      { href: "/roles", label: "الأدوار والصلاحيات", icon: ShieldCheck },
-      { href: "/settings", label: "إعدادات المنصة", icon: Settings },
-      { href: "/audit", label: "سجل التدقيق", icon: History },
-      { href: "/notifications", label: "الإشعارات", icon: FileClock },
+      { href: "/admins", permission: "admins", label: "المسؤولون", icon: UserCog },
+      { href: "/roles", permission: "roles", label: "الأدوار والصلاحيات", icon: ShieldCheck },
+      { href: "/settings", permission: "settings", label: "إعدادات المنصة", icon: Settings },
+      { href: "/audit", permission: "audit", label: "سجل التدقيق", icon: History },
+      { href: "/notifications", permission: "notifications", label: "الإشعارات", icon: FileClock },
     ],
   },
 ];

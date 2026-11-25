@@ -7,6 +7,7 @@ import { NotificationsMenu } from "@/components/shared/layout/notifications-menu
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { UserMenu } from "@/components/shared/layout/user-menu";
 import { Button } from "@/components/ui/button";
+import { useCan } from "@/lib/admin-access";
 import { ADMIN_NAV, isNavActive } from "@/lib/admin-nav";
 import { useUIStore } from "@/lib/store/ui-store";
 
@@ -28,6 +29,7 @@ export function AdminTopbar() {
   const setMobileOpen = useUIStore((s) => s.setMobileNavOpen);
   const setCommandOpen = useUIStore((s) => s.setCommandOpen);
   const section = useCurrentSection();
+  const can = useCan();
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/70 bg-background/80 px-4 backdrop-blur-xl sm:px-6">
@@ -58,7 +60,7 @@ export function AdminTopbar() {
         <div className="hidden sm:block">
           <ThemeToggle />
         </div>
-        <NotificationsMenu />
+        {can("notifications") ? <NotificationsMenu /> : null}
         <UserMenu />
       </div>
     </header>

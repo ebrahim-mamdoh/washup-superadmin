@@ -1,3 +1,5 @@
+import type { PermissionKey, PermissionLevel } from "./admins";
+
 export type AdminRole = "super" | "operations" | "finance" | "support";
 
 export type AdminStatus = "active" | "inactive";
@@ -10,6 +12,16 @@ export interface AdminUser {
   status: AdminStatus;
   lastLoginAt: string | null;
   createdAt: string;
+}
+
+/** What the signed-in admin may do per module (roles matrix; super = full access). */
+export type AdminPermissions = Record<PermissionKey, PermissionLevel>;
+
+/** The signed-in admin as returned by login and `/admin/auth/me` (GAP-012, GAP-046). */
+export interface AdminSession extends AdminUser {
+  permissions: AdminPermissions;
+  /** True only on the bundled demo (mock) data source; false on real data. */
+  demoData: boolean;
 }
 
 export interface LoginPayload {
@@ -26,5 +38,5 @@ export interface SessionTokens {
 }
 
 export interface LoginResponse extends SessionTokens {
-  admin: AdminUser;
+  admin: AdminSession;
 }

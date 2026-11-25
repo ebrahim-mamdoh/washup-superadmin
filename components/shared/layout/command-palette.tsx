@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/command";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useGlobalSearch } from "@/hooks/use-platform";
+import { useCan } from "@/lib/admin-access";
 import { ADMIN_NAV_ITEMS } from "@/lib/admin-nav";
 import { useUIStore } from "@/lib/store/ui-store";
 import type { SearchResultGroup } from "@/types/search";
@@ -57,6 +58,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const debounced = useDebouncedValue(query, 250);
   const { data, isFetching } = useGlobalSearch(debounced);
+  const can = useCan();
 
   const go = (href: string) => {
     onClose();
@@ -65,7 +67,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
 
   const term = debounced.trim();
   const results = term.length >= 2 ? data?.results ?? [] : [];
-  const navMatches = ADMIN_NAV_ITEMS.filter((i) => !query.trim() || i.label.includes(query.trim()));
+  const navMatches = ADMIN_NAV_ITEMS.filter((i) => can(i.permission) && (!query.trim() || i.label.includes(query.trim())));
   const grouped = (Object.keys(GROUPS) as SearchResultGroup[])
     .map((g) => ({ group: g, items: results.filter((r) => r.group === g) }))
     .filter((g) => g.items.length);

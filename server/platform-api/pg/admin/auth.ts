@@ -1,24 +1,36 @@
 import "server-only";
 
-import type { AdminUser } from "@/types/auth";
+import type { PermissionKey, PermissionLevel } from "@/types/admins";
+import type { AdminSession, AdminUser } from "@/types/auth";
 
 import { MockApiError, ok } from "../../http";
 import { type Identity, refreshSession, sessionTokens, signInWithPassword, signOut } from "../auth";
 import { adminsWhere } from "../entities";
 import { logAudit } from "../platform";
+import { permissionsFor } from "../../permissions";
 import { route } from "../router";
 import { type Q, db } from "../sql";
 
+/** Adds the role's row of the stored roles matrix (`admin_role_permissions`); super is fixed (full access). */
+async function withPermissions(q: Q, admin: AdminUser): Promise<AdminSession> {
+  if (admin.role === "super") return { ...admin, permissions: permissionsFor("super", null), demoData: false };
+  const rows = await q<{ key: PermissionKey; level: PermissionLevel }[]>`
+    select permission_key as key, level from public.admin_role_permissions where role = ${admin.role}`;
+  const row = Object.fromEntries(rows.map((r) => [r.key, r.level])) as Record<PermissionKey, PermissionLevel>;
+  return { ...admin, permissions: permissionsFor(admin.role, { [admin.role]: row }), demoData: false };
+}
+
 /**
- * Signed-in identity → active Super Admin profile, or null. Checked on every request (GAP-003):
- * this panel and its API are for role `super` only; other admin roles have no access here.
+ * Signed-in identity → active admin profile with its permissions, or null. Checked on every
+ * request; the dispatcher then requires the module level each route is mapped to
+ * (`../../permissions.ts`, GAP-012). Inactive admins are refused everywhere.
  */
-export async function resolveAdmin(q: Q, identity: Identity): Promise<AdminUser | null> {
+export async function resolveAdmin(q: Q, identity: Identity): Promise<AdminSession | null> {
   const [admin] =
     identity.kind === "supabase"
       ? await adminsWhere(q, q`a.user_id = ${identity.userId}`)
       : await adminsWhere(q, q`a.id = ${identity.profileId}`);
-  return admin && admin.status === "active" && admin.role === "super" ? admin : null;
+  return admin && admin.status === "active" ? withPermissions(q, admin) : null;
 }
 
 export const authRoutes = [
@@ -45,18 +57,12 @@ export const authRoutes = [
       if (admin.status !== "active") {
         throw new MockApiError("هذا الحساب موقوف. تواصل مع مدير النظام.", 403);
       }
-      if (admin.role !== "super") {
-        throw new MockApiError(
-          "هذه اللوحة مخصصة لحسابات Super Admin فقط. استخدم لوحة الإدارة العامة لدورك.",
-          403,
-        );
-      }
-
       const [updated] = await sql<{ lastLoginAt: string }[]>`
         update public.admin_users set last_login_at = now() where id = ${admin.id} returning last_login_at as "lastLoginAt"`;
       await logAudit(sql, { actorId: admin.id, action: "admin.login", entity: "admins", entityId: admin.id });
 
-      return ok({ ...sessionTokens(session), admin: { ...admin, lastLoginAt: updated.lastLoginAt } }, "تم تسجيل الدخول بنجاح");
+      const withPerms = await withPermissions(sql, { ...admin, lastLoginAt: updated.lastLoginAt });
+      return ok({ ...sessionTokens(session), admin: withPerms }, "تم تسجيل الدخول بنجاح");
     },
     true,
   ),
@@ -68,7 +74,7 @@ export const authRoutes = [
     async ({ body }) => {
       const session = await refreshSession(String(body.refresh_token ?? ""));
       const admin = session ? await resolveAdmin(db(), session.identity) : null;
-      if (!session || !admin || admin.role !== "super") throw new MockApiError("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى", 401);
+      if (!session || !admin) throw new MockApiError("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى", 401);
       return ok(sessionTokens(session));
     },
     true,

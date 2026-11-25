@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useNavBadges } from "@/hooks/use-nav-badges";
+import { useCan } from "@/lib/admin-access";
 import { ADMIN_NAV, isNavActive } from "@/lib/admin-nav";
 import { cn } from "@/lib/utils";
 
@@ -16,10 +17,13 @@ type SidebarNavProps = {
 export function SidebarNav({ collapsed, onNavigate }: SidebarNavProps) {
   const pathname = usePathname();
   const badges = useNavBadges();
+  const can = useCan();
+  // Only the pages this admin's role can open (GAP-012); empty groups disappear.
+  const groups = ADMIN_NAV.map((g) => ({ ...g, items: g.items.filter((i) => can(i.permission)) })).filter((g) => g.items.length);
 
   return (
     <nav aria-label="القائمة الرئيسية" className="space-y-5">
-      {ADMIN_NAV.map((group, gi) => (
+      {groups.map((group, gi) => (
         <div key={group.title ?? gi} className="space-y-1">
           {group.title ? (
             collapsed ? (

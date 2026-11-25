@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AdminUser } from "@/types/auth";
+import type { AdminSession } from "@/types/auth";
 
 import type { HttpMethod, VendorActor } from "../router";
 
@@ -14,7 +14,7 @@ export interface PgAdminContext {
   query: URLSearchParams;
   body: Record<string, unknown>;
   /** Authenticated admin (null only on public routes). */
-  admin: AdminUser;
+  admin: AdminSession;
   token: string | null;
   headers: Headers;
 }

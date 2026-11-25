@@ -15,6 +15,7 @@ import { pushRoutes } from "./handlers/push";
 import { reviewRoutes } from "./handlers/reviews";
 import { washRoutes } from "./handlers/washes";
 import { MockApiError, fail } from "./http";
+import { FORBIDDEN, canAccess, permissionsFor, routeAccess } from "./permissions";
 import { handleSupabaseRequest } from "./pg";
 import { type HttpMethod, type RouteDef, type VendorRouteDef, matchPath } from "./router";
 import { isLoginPath, loginThrottle } from "./throttle";
@@ -108,10 +109,14 @@ export async function handleMockRequest(req: Request, segments: string[]): Promi
       response = await (matched.def as VendorRouteDef).handler({ ...base, actor: actor! });
     } else {
       const adminId = token ? db.sessions[token] : undefined;
-      // Super Admin only (GAP-003): other admin roles have no panel and no API access here.
-      const admin = adminId ? db.admins.find((a) => a.id === adminId && a.status === "active" && a.role === "super") : undefined;
-      if (!matched.def.isPublic && !admin) return fail("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى", 401);
-      response = await (matched.def as RouteDef).handler({ ...base, admin: admin! });
+      const admin = adminId ? db.admins.find((a) => a.id === adminId && a.status === "active") : undefined;
+      const permissions = admin ? permissionsFor(admin.role, db.roles) : permissionsFor("support", null);
+      if (!matched.def.isPublic) {
+        if (!admin) return fail("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى", 401);
+        // Per-route permission from the roles matrix (GAP-012); unmapped routes are Super Admin only.
+        if (!canAccess(admin.role, permissions, routeAccess(method, matched.def.path))) return fail(FORBIDDEN, 403);
+      }
+      response = await (matched.def as RouteDef).handler({ ...base, admin: admin!, permissions });
     }
     // Successful writes are flushed to the shared store so other apps see them immediately.
     if (method !== "GET" && response.ok) persistDb(db);

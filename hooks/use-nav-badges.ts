@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { useCan } from "@/lib/admin-access";
 import { CACHE_TTL_LIVE } from "@/lib/cache/ttl";
 import { fetchApplications } from "@/lib/services/applications.service";
 import { fetchComplaints } from "@/lib/services/complaints.service";
@@ -12,15 +13,18 @@ import type { NavBadgeKey } from "@/lib/admin-nav";
  * the `meta.counts` payload matters — cheap and always consistent with lists.
  */
 export function useNavBadges(): Record<NavBadgeKey, number> {
+  const can = useCan();
   const apps = useQuery({
     queryKey: ["applications", "badge"],
     queryFn: () => fetchApplications({ per_page: 1 }),
+    enabled: can("applications"),
     staleTime: CACHE_TTL_LIVE * 1000,
     refetchInterval: 60_000,
   });
   const complaints = useQuery({
     queryKey: ["complaints", "badge"],
     queryFn: () => fetchComplaints({ per_page: 1 }),
+    enabled: can("complaints"),
     staleTime: CACHE_TTL_LIVE * 1000,
     refetchInterval: 60_000,
   });

@@ -7,6 +7,7 @@ import { BrandLogo } from "@/components/shared/brand-logo";
 import { SidebarNav } from "@/components/shared/layout/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { useAuthStore } from "@/lib/store/auth-store";
 import { useUIStore } from "@/lib/store/ui-store";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,8 @@ export function AdminSidebar() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const mobileOpen = useUIStore((s) => s.mobileNavOpen);
   const setMobileOpen = useUIStore((s) => s.setMobileNavOpen);
+  // The "demo data" notice only on the bundled demo data source, never on real data (GAP-046).
+  const demoData = useAuthStore((s) => s.admin?.demoData === true);
 
   return (
     <>
@@ -44,12 +47,12 @@ export function AdminSidebar() {
               <PanelRightOpen />
             </Button>
           </div>
-        ) : (
+        ) : demoData ? (
           <div className="m-3 rounded-xl border border-sidebar-border bg-card/80 p-3">
             <p className="text-xs font-semibold">بيئة العرض التجريبي</p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">البيانات وهمية ويمكن إعادة ضبطها من قائمة الحساب.</p>
           </div>
-        )}
+        ) : null}
       </aside>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

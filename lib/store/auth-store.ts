@@ -3,17 +3,17 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import type { AdminUser, SessionTokens } from "@/types/auth";
+import type { AdminSession, SessionTokens } from "@/types/auth";
 
 export const AUTH_STORE_KEY = "carzen-super-admin-auth-v1";
 
 export type EstablishSessionInput = {
-  admin: AdminUser;
+  admin: AdminSession;
   tokens: SessionTokens;
 };
 
 type AuthState = {
-  admin: AdminUser | null;
+  admin: AdminSession | null;
   accessToken: string | null;
   tokenType: string;
   /** Renews the access token (Supabase tokens last an hour); null when the API has none. */
@@ -24,7 +24,7 @@ type AuthState = {
   hasHydrated: boolean;
   establishSession: (session: EstablishSessionInput) => void;
   setTokens: (tokens: SessionTokens) => void;
-  setAdmin: (admin: AdminUser) => void;
+  setAdmin: (admin: AdminSession) => void;
   clearAuth: () => void;
 };
 

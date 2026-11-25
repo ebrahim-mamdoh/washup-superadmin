@@ -52,7 +52,7 @@ export const adminRoutes = [
     if (body.role !== undefined) {
       const role = String(body.role) as AdminRole;
       if (!ROLES.includes(role)) throw new MockApiError("اختر دورًا صالحًا", 422);
-      if (target.id === admin.id && role !== "super") throw new MockApiError("لا يمكنك تغيير دورك بنفسك", 409);
+      if (target.id === admin.id && role !== target.role) throw new MockApiError("لا يمكنك تغيير دورك بنفسك", 409);
       if (target.role === "super" && role !== "super" && activeSupers(db).length <= 1) {
         throw new MockApiError("لا يمكن إزالة آخر Super Admin", 409);
       }
@@ -87,18 +87,22 @@ export const adminRoutes = [
     const matrix = body.matrix as RolesMatrix | undefined;
     if (!matrix) throw new MockApiError("المصفوفة مطلوبة", 422);
     const changes: string[] = [];
+    // Validated on a copy: a refused change leaves the stored matrix untouched.
+    const updated = structuredClone(db.roles);
     for (const role of ROLES) {
       if (role === "super") continue; // Super admin always keeps full access.
       for (const key of Object.keys(db.roles[role]) as PermissionKey[]) {
         const next = matrix[role]?.[key];
         if (!next || !LEVELS.includes(next)) continue;
         if (db.roles[role][key] !== next) {
+          if (key === "audit" && next === "manage") throw new MockApiError("سجل التدقيق للقراءة فقط ولا يمكن منح صلاحية إدارته", 422);
           changes.push(`${role}.${key}: ${db.roles[role][key]} → ${next}`);
-          db.roles[role][key] = next;
+          updated[role][key] = next;
         }
       }
     }
     if (!changes.length) throw new MockApiError("لا توجد تغييرات للحفظ", 422);
+    db.roles = updated;
     logAudit(db, { actorId: admin.id, action: "update_roles_matrix", entity: "roles", entityId: "matrix", newValue: changes.join(" · "), reason });
     return ok(db.roles, `تم حفظ ${changes.length} تعديل — يسري فورًا على المستخدمين`);
   }),

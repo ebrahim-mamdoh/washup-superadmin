@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { AdminPermissions } from "@/types/auth";
 import type { VendorRole } from "@/types/vendor/auth";
 import type { Business, Staff } from "@/types/washes";
 
@@ -14,6 +15,8 @@ export interface HandlerContext {
   body: Record<string, unknown>;
   /** Authenticated admin (null only on public routes). */
   admin: StoredAdmin;
+  /** The admin's permissions from the roles matrix (super: full; meaningless on public routes). */
+  permissions: AdminPermissions;
   token: string | null;
 }
 

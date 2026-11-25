@@ -1,12 +1,21 @@
 import "server-only";
 
 import type { AuditLogListItem } from "@/types/audit";
+import type { AdminNotification } from "@/types/notifications";
 import type { SearchResult } from "@/types/search";
 import type { SettingsSection } from "@/types/settings";
 import { logAudit, resetDb } from "../db";
 import { MockApiError, matchesSearch, ok, paginate, requireText } from "../http";
 import { adminName, businessName, customerName, findOrThrow } from "../lookups";
+import { SEARCH_GROUP_MODULE, hasLevel, visibleNotificationTypes } from "../permissions";
 import { route } from "../router";
+import type { MockDatabase } from "../schema";
+
+/** A stored notification as one admin sees it: read when read for everyone (seed) or by this admin. */
+function forAdmin(n: MockDatabase["notifications"][number], adminId: string): AdminNotification {
+  const { readBy, ...rest } = n;
+  return { ...rest, read: n.read || Boolean(readBy?.includes(adminId)) };
+}
 
 const SECTIONS: SettingsSection[] = ["general", "bookingDefaults", "legal", "catalogs"];
 
@@ -62,28 +71,33 @@ export const platformRoutes = [
   }),
 
   // ── Notifications ─────────────────────────────────────────
-  route("GET", "/admin/notifications", ({ db, query }) => {
+  // Read state is per admin (GAP-095) and each admin sees only the types of modules they can open (GAP-012).
+  route("GET", "/admin/notifications", ({ db, query, admin, permissions }) => {
     const filter = query.get("filter");
-    const list = [...db.notifications].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).filter((n) => (filter === "unread" ? !n.read : filter && filter !== "all" ? n.type === filter : true));
+    const types = visibleNotificationTypes(permissions);
+    const mine = db.notifications.filter((n) => types.includes(n.type)).map((n) => forAdmin(n, admin.id));
+    const list = mine.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).filter((n) => (filter === "unread" ? !n.read : filter && filter !== "all" ? n.type === filter : true));
     const { items, pagination } = paginate(list, query, 20);
-    return ok(items, "OK", { pagination, meta: { unread: db.notifications.filter((n) => !n.read).length } });
+    return ok(items, "OK", { pagination, meta: { unread: mine.filter((n) => !n.read).length } });
   }),
 
-  route("POST", "/admin/notifications/:id/read", ({ db, params }) => {
+  route("POST", "/admin/notifications/:id/read", ({ db, params, admin, permissions }) => {
     const n = findOrThrow(db.notifications, params.id, "الإشعار");
-    n.read = true;
-    return ok(n);
+    if (!visibleNotificationTypes(permissions).includes(n.type)) throw new MockApiError("الإشعار غير موجود", 404);
+    n.readBy = [...new Set([...(n.readBy ?? []), admin.id])];
+    return ok(forAdmin(n, admin.id));
   }),
 
-  route("POST", "/admin/notifications/read-all", ({ db }) => {
+  route("POST", "/admin/notifications/read-all", ({ db, admin, permissions }) => {
+    const types = visibleNotificationTypes(permissions);
     db.notifications.forEach((n) => {
-      n.read = true;
+      if (types.includes(n.type)) n.readBy = [...new Set([...(n.readBy ?? []), admin.id])];
     });
     return ok(null, "تم تعليم كل الإشعارات كمقروءة");
   }),
 
   // ── Global search (⌘K) ────────────────────────────────────
-  route("GET", "/admin/search", ({ db, query }) => {
+  route("GET", "/admin/search", ({ db, query, permissions }) => {
     const q = query.get("q")?.trim() ?? "";
     if (q.length < 2) return ok({ query: q, results: [] });
     const sq = new URLSearchParams({ search: q });
@@ -120,7 +134,8 @@ export const platformRoutes = [
       .slice(0, 5)
       .forEach((c) => results.push({ id: c.id, group: "complaints", title: c.ticket, subtitle: customerName(db, c.customerId) ?? "", href: `/complaints/${c.id}` }));
 
-    return ok({ query: q, results });
+    // Only groups of modules the caller may open (GAP-012).
+    return ok({ query: q, results: results.filter((r) => hasLevel(permissions, SEARCH_GROUP_MODULE[r.group], "view")) });
   }),
 
   // ── Demo utilities ────────────────────────────────────────

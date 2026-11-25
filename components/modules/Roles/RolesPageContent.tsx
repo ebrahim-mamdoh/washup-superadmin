@@ -16,6 +16,7 @@ import { useRoles, useUpdateRoles } from "@/hooks/use-admins";
 import { ADMIN_ROLE, PERMISSION_LEVEL, PERMISSION_MODULES } from "@/lib/constants/labels";
 import { formatNumber } from "@/lib/format";
 import { queryKeys } from "@/lib/query-keys";
+import { useAuthStore } from "@/lib/store/auth-store";
 import { cn } from "@/lib/utils";
 import type { PermissionKey, PermissionLevel, RolesMatrix } from "@/types/admins";
 import type { AdminRole } from "@/types/auth";
@@ -28,6 +29,7 @@ const EDITABLE_ROLES = ROLES.filter((r) => r !== LOCKED_ROLE);
 const VIEW_ONLY_MODULES: PermissionKey[] = ["audit"];
 const VIEW_ONLY_HINT = "سجل التدقيق للعرض فقط — لا يمكن تعديله أو حذفه لأي دور";
 const LOCKED_HINT = "صلاحيات كاملة دائمًا";
+const READ_ONLY_HINT = "تعديل الصلاحيات متاح لـ Super Admin فقط";
 
 const MODULE_LABEL = Object.fromEntries(PERMISSION_MODULES.map((m) => [m.key, m.label])) as Record<PermissionKey, string>;
 
@@ -85,6 +87,8 @@ export default function RolesPageContent() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch, isRefetching } = useRoles();
   const update = useUpdateRoles();
+  // Only Super Admin edits the matrix (GAP-012); other roles with view access see it read-only.
+  const readOnly = useAuthStore((s) => s.admin?.role !== "super");
   const [draft, setDraft] = useState<RolesMatrix | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
 
@@ -280,8 +284,12 @@ export default function RolesPageContent() {
                           const cellLabel = `${m.label} — ${ADMIN_ROLE[role].label}`;
                           return (
                             <td key={role} className="border-b border-border/60 px-3 py-2 text-center">
-                              {role === LOCKED_ROLE ? (
-                                <LockedPermission value={level} label={cellLabel} hint={viewOnly && level !== "manage" ? VIEW_ONLY_HINT : LOCKED_HINT} />
+                              {role === LOCKED_ROLE || readOnly ? (
+                                <LockedPermission
+                                  value={level}
+                                  label={cellLabel}
+                                  hint={role !== LOCKED_ROLE ? READ_ONLY_HINT : viewOnly && level !== "manage" ? VIEW_ONLY_HINT : LOCKED_HINT}
+                                />
                               ) : (
                                 <PermissionSegmented
                                   name={`perm-${role}-${m.key}`}
