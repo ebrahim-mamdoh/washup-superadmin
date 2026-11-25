@@ -58,9 +58,26 @@ export type Session = { token: string; refreshToken: string; expiresIn: number |
 
 type SupabaseTokenBody = { access_token: string; refresh_token: string; expires_in?: number; user: { id: string } };
 
+/** Most tokens kept in the validation cache; expired entries are dropped first, then the oldest (GAP-064). */
+const TOKEN_CACHE_MAX = 2000;
+
+function rememberToken(token: string, identity: Identity) {
+  const tokens = cache().tokens;
+  tokens.delete(token);
+  tokens.set(token, { identity, until: Date.now() + TOKEN_CACHE_MS });
+  if (tokens.size <= TOKEN_CACHE_MAX) return;
+  const at = Date.now();
+  for (const [k, v] of tokens) if (v.until <= at) tokens.delete(k);
+  // Map keeps insertion order: the first keys are the oldest.
+  for (const k of tokens.keys()) {
+    if (tokens.size <= TOKEN_CACHE_MAX) break;
+    tokens.delete(k);
+  }
+}
+
 function toSession(body: SupabaseTokenBody): Session {
   const identity: Identity = { kind: "supabase", userId: body.user.id };
-  cache().tokens.set(body.access_token, { identity, until: Date.now() + TOKEN_CACHE_MS });
+  rememberToken(body.access_token, identity);
   return { token: body.access_token, refreshToken: body.refresh_token, expiresIn: body.expires_in ?? null, identity };
 }
 
@@ -141,7 +158,7 @@ export async function identityFromToken(token: string): Promise<Identity | null>
   }
   const user = (await res.json()) as { id: string };
   const identity: Identity = { kind: "supabase", userId: user.id };
-  cache().tokens.set(token, { identity, until: Date.now() + TOKEN_CACHE_MS });
+  rememberToken(token, identity);
   return identity;
 }
 

@@ -20,9 +20,22 @@ export function isLoginPath(segments: string[]): boolean {
   return segments.length === 3 && segments[1] === "auth" && (segments[2] === "login" || segments[2] === "forgot-password");
 }
 
+/**
+ * The caller's IP from a header only the hosting platform sets (GAP-064): on Vercel
+ * `x-vercel-forwarded-for` (then `x-real-ip`), both written by Vercel's edge. Elsewhere only the header
+ * named in TRUSTED_CLIENT_IP_HEADER (set by your own proxy) is used; a client-sent `x-forwarded-for`
+ * is never trusted, so it can't be rotated to dodge the limit. Without one, all callers share a bucket.
+ */
+export function clientIp(req: Request): string {
+  const first = (name: string) => req.headers.get(name)?.split(",")[0]?.trim() || "";
+  if (process.env.VERCEL) return first("x-vercel-forwarded-for") || first("x-real-ip") || "unknown";
+  const trusted = process.env.TRUSTED_CLIENT_IP_HEADER?.trim().toLowerCase();
+  return (trusted && first(trusted)) || "local";
+}
+
 /** Records an attempt; returns 0 when allowed, else the seconds to wait. */
 export function loginThrottle(req: Request): number {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "local";
+  const ip = clientIp(req);
   const at = Date.now();
   const map = attempts();
   const recent = (map.get(ip) ?? []).filter((t) => at - t < WINDOW_MS);
