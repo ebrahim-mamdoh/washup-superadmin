@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { ApplicationStatus } from "@/types/applications";
+import { assertChecklist } from "../application-rules";
 import { logAudit, nid, now, pushAdminNotification } from "../db";
 import { MockApiError, countBy, matchesSearch, ok, paginate, requireText, sortBy } from "../http";
 import { findOrThrow } from "../lookups";
@@ -45,11 +46,9 @@ export const applicationRoutes = [
     if (app.status === "approved" || app.status === "rejected") {
       throw new MockApiError("تم اتخاذ قرار في هذا الطلب مسبقًا", 409);
     }
-    const checklist = Array.isArray(body.checklist) ? body.checklist.map(String) : [];
-    if (checklist.length < 6) {
-      throw new MockApiError("أكمل قائمة التحقق قبل الموافقة", 422);
-    }
-    const activate = body.activateImmediately !== false;
+    assertChecklist(body.checklist);
+    // A new wash goes live only when the reviewer asks for it explicitly (GAP-087).
+    const activate = body.activateImmediately === true;
     const note = typeof body.note === "string" ? body.note.trim() : "";
 
     const bizId = nid("biz");
@@ -76,7 +75,8 @@ export const applicationRoutes = [
       lat: app.lat,
       lng: app.lng,
       phone: app.phone,
-      amenities: ["waiting", "card"],
+      // No invented amenities (GAP-087): the owner sets them in the portal.
+      amenities: [],
       capacity: app.capacity,
       active: true,
       featured: false,
@@ -151,6 +151,18 @@ export const applicationRoutes = [
     return ok({ application: app, businessId: bizId }, `تمت الموافقة على ${app.businessName}`);
   }),
 
+  // Owner login retry (GAP-045). The mock has no Auth service: the owner's demo password is (re)set.
+  route("POST", "/admin/applications/:id/owner-login", ({ db, params, admin }) => {
+    const app = findOrThrow(db.applications, params.id, "الطلب");
+    if (app.status !== "approved" || !app.businessId) throw new MockApiError("الطلب لم تتم الموافقة عليه بعد", 409);
+    const owner = db.staff.find((s) => s.businessId === app.businessId && s.role === "owner");
+    if (!owner) throw new MockApiError("لا يوجد مالك مرتبط بهذه المغسلة", 404);
+    if (db.staffPasswords[owner.id]) throw new MockApiError("للمالك حساب دخول بالفعل", 409);
+    db.staffPasswords[owner.id] = "demo1234";
+    logAudit(db, { actorId: admin.id, action: "create_owner_login", entity: "applications", entityId: app.id, newValue: owner.id });
+    return ok(null, "حساب المالك: كلمة المرور المؤقتة demo1234");
+  }),
+
   route("POST", "/admin/applications/:id/reject", ({ db, params, body, admin }) => {
     const app = findOrThrow(db.applications, params.id, "الطلب");
     if (app.status === "approved" || app.status === "rejected") {
@@ -162,7 +174,8 @@ export const applicationRoutes = [
     app.reviewNote = reason;
     app.reviewedAt = now().toISOString();
     logAudit(db, { actorId: admin.id, action: "reject_application", entity: "applications", entityId: app.id, oldValue: old, newValue: "rejected", reason });
-    return ok(app, "تم رفض الطلب وإبلاغ المالك بالسبب");
+    // No message is sent to the applicant (GAP-052): they see the reason when they check the application.
+    return ok(app, "تم رفض الطلب — يظهر السبب للمالك عند متابعة طلبه من صفحة التسجيل");
   }),
 
   route("POST", "/admin/applications/:id/request-changes", ({ db, params, body, admin }) => {
@@ -175,6 +188,6 @@ export const applicationRoutes = [
     app.reviewNote = note;
     app.reviewedAt = now().toISOString();
     logAudit(db, { actorId: admin.id, action: "request_changes_application", entity: "applications", entityId: app.id, oldValue: "pending", newValue: "needs_changes", reason: note });
-    return ok(app, "تم إرسال طلب التعديل للمالك");
+    return ok(app, "تم حفظ طلب التعديل — يظهر للمالك عند متابعة طلبه من صفحة التسجيل");
   }),
 ];

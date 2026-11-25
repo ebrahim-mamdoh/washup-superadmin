@@ -33,7 +33,8 @@ export function ReviewDecisionPanel({ application, className }: ReviewDecisionPa
   const notesId = useId();
   const [checked, setChecked] = useState<Set<ChecklistKey>>(() => new Set());
   const [notes, setNotes] = useState("");
-  const [activateNow, setActivateNow] = useState(true);
+  // Live only on an explicit choice (GAP-087): the default keeps the wash approved, not public.
+  const [activateNow, setActivateNow] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
 
@@ -71,7 +72,7 @@ export function ReviewDecisionPanel({ application, className }: ReviewDecisionPa
               <p className="text-sm font-semibold">{approved ? "تم اعتماد المغسلة" : "تم رفض الطلب"}</p>
               {application.reviewedAt ? <p className="num text-muted-foreground">{formatDateTime(application.reviewedAt)}</p> : null}
               <p className="leading-relaxed text-muted-foreground">
-                {approved ? "تم إنشاء المغسلة وفرعها وخدماتها وحساب المالك." : "تم إبلاغ المالك بسبب الرفض. لا توجد إجراءات إضافية على هذا الطلب."}
+                {approved ? "تم إنشاء المغسلة وفرعها وخدماتها وحساب المالك." : "يظهر سبب الرفض للمالك عند متابعة طلبه. لا توجد إجراءات إضافية على هذا الطلب."}
               </p>
             </div>
           </div>

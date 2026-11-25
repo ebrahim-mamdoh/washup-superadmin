@@ -54,6 +54,7 @@ const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "POST /admin/applications/:id/approve": manage("applications"),
   "POST /admin/applications/:id/reject": manage("applications"),
   "POST /admin/applications/:id/request-changes": manage("applications"),
+  "POST /admin/applications/:id/owner-login": manage("applications"),
 
   "GET /admin/orders": view("orders"),
   "GET /admin/orders/:id": view("orders"),

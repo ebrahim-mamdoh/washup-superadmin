@@ -482,7 +482,7 @@ export default function OrderDetailsPageContent({ id }: { id: string }) {
         open={cancelOpen}
         onOpenChange={setCancelOpen}
         title={`إلغاء الحجز ${order.number}`}
-        description="سيتم إلغاء الحجز فورًا وإبلاغ العميل والمغسلة، ولا يمكن التراجع عن الإلغاء."
+        description="سيتم إلغاء الحجز فورًا وإبلاغ المغسلة (وعميل التطبيق بإشعار)، ولا يمكن التراجع عن الإلغاء."
         textLabel="سبب الإلغاء (يُرسل للطرفين ويُسجل في سجل التدقيق)"
         textPlaceholder="مثال: طلب العميل عبر الدعم بسبب ظرف طارئ"
         confirmLabel="تأكيد الإلغاء"

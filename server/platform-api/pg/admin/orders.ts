@@ -185,7 +185,9 @@ export const orderRoutes = [
       );
       return orderById(t, current.id, "الحجز");
     });
-    return ok(order, `تم إلغاء الحجز ${order.number} وإبلاغ العميل والمغسلة`);
+    // The wash gets a notice above; an app customer gets the order-status notification from the
+    // database trigger. A walk-in (no customer account) is told by nobody (GAP-052).
+    return ok(order, order.customerId ? `تم إلغاء الحجز ${order.number} وإبلاغ العميل والمغسلة` : `تم إلغاء الحجز ${order.number} وإبلاغ المغسلة`);
   }),
 
   route("POST", "/admin/orders/:id/flag", async ({ params, body, admin }) => {

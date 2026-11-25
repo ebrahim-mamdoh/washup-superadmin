@@ -37,7 +37,8 @@ import { DetailSkeleton, EmptyState, ErrorState } from "@/components/shared/stat
 import { StatusBadge } from "@/components/shared/status-badge";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
-import { useApplication } from "@/hooks/use-applications";
+import { useApplication, useCreateOwnerLogin } from "@/hooks/use-applications";
+import { useCan } from "@/lib/admin-access";
 import { APPLICATION_STATUS, AREAS, TONES, WEEK_DAYS } from "@/lib/constants/labels";
 import { daysBetween, formatDate, formatDateTime, formatDuration, formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -60,11 +61,14 @@ const BANNER: Record<Exclude<WashApplication["status"], "pending">, { tone: stri
     tone: TONES.danger,
     icon: <XCircle />,
     title: "تم رفض الطلب",
-    hint: "تم إبلاغ المالك بالسبب التالي.",
+    hint: "يظهر هذا السبب للمالك عند متابعة طلبه من صفحة التسجيل.",
   },
 };
 
 function DecisionBanner({ application }: { application: WashApplication }) {
+  // Retry when the owner's login could not be created at approval time (GAP-045).
+  const ownerLogin = useCreateOwnerLogin(application.id);
+  const canManage = useCan()("applications", "manage");
   if (application.status === "pending") return null;
   const b = BANNER[application.status];
   return (
@@ -85,6 +89,11 @@ function DecisionBanner({ application }: { application: WashApplication }) {
           <p className="mt-1.5 rounded-lg bg-card/70 px-3 py-2 text-sm leading-relaxed">{application.reviewNote}</p>
         ) : null}
       </div>
+      {application.status === "approved" && canManage ? (
+        <Button variant="outline" size="sm" className="shrink-0" loading={ownerLogin.isPending} onClick={() => ownerLogin.mutate()}>
+          إنشاء حساب دخول المالك
+        </Button>
+      ) : null}
     </div>
   );
 }

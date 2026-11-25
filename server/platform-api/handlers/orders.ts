@@ -89,7 +89,9 @@ export const orderRoutes = [
     }
     logAudit(db, { actorId: admin.id, action: "cancel_order", entity: "orders", entityId: order.id, branchId: order.branchId, oldValue: old, newValue: "cancelled", reason });
     pushVendorNotification(db, order.businessId, order.branchId, "booking_cancelled", `ألغت إدارة Wash Up الحجز ${order.number}`, `السبب: ${reason}`, `/orders/${order.id}`);
-    return ok(order, `تم إلغاء الحجز ${order.number} وإبلاغ العميل والمغسلة`);
+    // The wash gets a notice above; an app customer gets the order-status notification from the
+    // database trigger. A walk-in (no customer account) is told by nobody (GAP-052).
+    return ok(order, order.customerId ? `تم إلغاء الحجز ${order.number} وإبلاغ العميل والمغسلة` : `تم إلغاء الحجز ${order.number} وإبلاغ المغسلة`);
   }),
 
   route("POST", "/admin/orders/:id/flag", ({ db, params, body, admin }) => {

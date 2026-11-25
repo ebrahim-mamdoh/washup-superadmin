@@ -25,6 +25,11 @@ export function rejectApplication(id: string, payload: RejectApplicationPayload)
   return send<WashApplication>("post", `/admin/applications/${id}/reject`, payload);
 }
 
+/** Creates the owner's login when it failed at approval time (GAP-045). */
+export function createOwnerLogin(id: string) {
+  return send<null>("post", `/admin/applications/${id}/owner-login`);
+}
+
 export function requestApplicationChanges(id: string, payload: RequestChangesPayload) {
   return send<WashApplication>("post", `/admin/applications/${id}/request-changes`, payload);
 }

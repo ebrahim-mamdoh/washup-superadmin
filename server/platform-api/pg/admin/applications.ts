@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ApplicationStatus, WashApplication } from "@/types/applications";
 
+import { assertChecklist } from "../../application-rules";
 import { MockApiError, ok, requireText } from "../../http";
 import { defaultPermissions } from "../../seed";
 import { createLogin, isLocalAuth, loginNotice } from "../auth";
@@ -22,6 +23,28 @@ const CATEGORY_BY_NAME: Record<string, string> = {
 };
 
 const DECIDED = "تم اتخاذ قرار في هذا الطلب مسبقًا";
+
+/**
+ * Owner login for an approved application, created AFTER the approval committed (GAP-045): a
+ * Supabase Auth user is an external side effect, so a rolled-back approval must not leave one
+ * behind. A failure here leaves the wash approved without a login; the admin retries with
+ * `POST /admin/applications/:id/owner-login`.
+ */
+async function createOwnerLogin(ownerId: string, phone: string): Promise<string> {
+  if (isLocalAuth()) return loginNotice(null);
+  try {
+    const login = await createLogin({ phone });
+    if ("userId" in login) {
+      // Only link when the owner still has no login (a concurrent retry may have linked one).
+      const linked = await db()`update public.staff set user_id = ${login.userId} where id = ${ownerId} and user_id is null returning id`;
+      if (!linked.length) return "للمالك حساب دخول بالفعل";
+    }
+    return loginNotice(login);
+  } catch (error) {
+    console.error("[applications] owner login creation failed", error);
+    return "تعذر إنشاء حساب الدخول الآن — أعد المحاولة من صفحة الطلب";
+  }
+}
 
 async function applicationById(q: Q, id: string): Promise<WashApplication> {
   const [app] = await applicationsWhere(q, q`ap.id = ${id}`);
@@ -96,9 +119,9 @@ export const applicationRoutes = [
     const result = await tx(async (t) => {
       const app = await applicationById(t, params.id);
       if (app.status === "approved" || app.status === "rejected") throw new MockApiError(DECIDED, 409);
-      const checklist = Array.isArray(body.checklist) ? body.checklist.map(String) : [];
-      if (checklist.length < 6) throw new MockApiError("أكمل قائمة التحقق قبل الموافقة", 422);
-      const activate = body.activateImmediately !== false;
+      assertChecklist(body.checklist);
+      // A new wash goes live only when the reviewer asks for it explicitly (GAP-087).
+      const activate = body.activateImmediately === true;
       const note = typeof body.note === "string" ? body.note.trim() : "";
 
       // Raw application row: phone is already E.164 there (the contract shows the display format).
@@ -135,12 +158,13 @@ export const applicationRoutes = [
           select ${branch.id}, h.weekday, h.open::time, h.close::time, h.closed
           from jsonb_to_recordset(${t.json(hours)}::jsonb) as h(weekday smallint, open text, close text, closed boolean)`;
       }
-      await t`
-        insert into public.branch_amenities (branch_id, amenity_id)
-        select ${branch.id}, a from unnest(${["waiting", "card"]}::text[]) as a`;
+      // No invented amenities (GAP-087): the application has none, the owner sets them in the portal.
 
+      const categories = await t<{ id: string }[]>`select id from public.service_categories`;
+      const known = new Set(categories.map((c) => c.id));
       const services = app.services.map((s) => ({
-        category: CATEGORY_BY_NAME[s.name] ?? "exterior",
+        category: CATEGORY_BY_NAME[s.name] && known.has(CATEGORY_BY_NAME[s.name]) ? CATEGORY_BY_NAME[s.name] : "exterior",
+        guessed: !(CATEGORY_BY_NAME[s.name] && known.has(CATEGORY_BY_NAME[s.name])),
         name: { ar: s.name, en: s.name },
         price: s.price,
         durationMin: s.durationMin,
@@ -203,13 +227,29 @@ export const applicationRoutes = [
         },
         `/washes/${biz.id}`,
       );
-      // The owner signs in to the partner portal with this phone: create and link the Supabase Auth login.
-      const login = isLocalAuth() ? null : await createLogin({ phone: raw.phone });
-      if (login && "userId" in login) await t`update public.staff set user_id = ${login.userId} where id = ${owner.id}`;
-      return { application: await applicationById(t, app.id), businessId: biz.id, login };
+      const guessed = services.filter((s) => s.guessed).length;
+      return { application: await applicationById(t, app.id), businessId: biz.id, ownerId: owner.id, phone: raw.phone, guessed };
     });
-    const { login, ...data } = result;
-    return ok(data, `تمت الموافقة على ${data.application.businessName} — حساب المالك: ${loginNotice(login)}`);
+    // The owner signs in to the partner portal with this phone: the login is created after commit.
+    const loginText = await createOwnerLogin(result.ownerId, result.phone);
+    const { application, businessId, guessed } = result;
+    const review = guessed ? ` — راجع فئة ${guessed} خدمة لم تُعرف فئتها (وُضعت «غسيل خارجي»)` : "";
+    return ok({ application, businessId }, `تمت الموافقة على ${application.businessName} — حساب المالك: ${loginText}${review}`);
+  }),
+
+  // Retry for an approved application whose owner has no login yet (GAP-045).
+  route("POST", "/admin/applications/:id/owner-login", async ({ params, admin }) => {
+    const sql = db();
+    const app = await applicationById(sql, params.id);
+    if (app.status !== "approved" || !app.businessId) throw new MockApiError("الطلب لم تتم الموافقة عليه بعد", 409);
+    const [owner] = await sql<{ id: string; phone: string; userId: string | null }[]>`
+      select s.id, s.phone, s.user_id as "userId" from public.businesses b join public.staff s on s.id = b.owner_staff_id
+      where b.id = ${app.businessId}`;
+    if (!owner) throw new MockApiError("لا يوجد مالك مرتبط بهذه المغسلة", 404);
+    if (owner.userId) throw new MockApiError("للمالك حساب دخول بالفعل", 409);
+    const text = await createOwnerLogin(owner.id, owner.phone);
+    await logAudit(sql, { actorId: admin.id, action: "create_owner_login", entity: "applications", entityId: app.id, newValue: owner.id });
+    return ok(null, `حساب المالك: ${text}`);
   }),
 
   route("POST", "/admin/applications/:id/reject", async ({ params, body, admin }) => {
@@ -232,7 +272,8 @@ export const applicationRoutes = [
       });
       return applicationById(t, current.id);
     });
-    return ok(app, "تم رفض الطلب وإبلاغ المالك بالسبب");
+    // No message is sent to the applicant (GAP-052): they see the reason when they check the application.
+    return ok(app, "تم رفض الطلب — يظهر السبب للمالك عند متابعة طلبه من صفحة التسجيل");
   }),
 
   route("POST", "/admin/applications/:id/request-changes", async ({ params, body, admin }) => {
@@ -256,6 +297,6 @@ export const applicationRoutes = [
       });
       return applicationById(t, current.id);
     });
-    return ok(app, "تم إرسال طلب التعديل للمالك");
+    return ok(app, "تم حفظ طلب التعديل — يظهر للمالك عند متابعة طلبه من صفحة التسجيل");
   }),
 ];

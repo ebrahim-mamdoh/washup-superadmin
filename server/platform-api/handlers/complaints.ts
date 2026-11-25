@@ -117,7 +117,8 @@ export const complaintRoutes = [
     complaint.updatedAt = at;
     const message = changes.includes("status")
       ? complaint.status === "resolved"
-        ? "تم حل الشكوى وإبلاغ العميل"
+        ? // Nothing is sent to the customer from here (GAP-052): say so instead of claiming it.
+          "تم حل الشكوى وحفظ القرار — لا يصل العميل إشعار تلقائي، تواصل معه بالقرار"
         : "تم تحديث حالة الشكوى"
       : changes.includes("assign")
         ? "تم تعيين المسؤول"

@@ -6,6 +6,7 @@ import { useAdminMutation } from "@/hooks/use-admin-mutation";
 import { queryKeys } from "@/lib/query-keys";
 import {
   approveApplication,
+  createOwnerLogin,
   fetchApplication,
   fetchApplications,
   rejectApplication,
@@ -41,6 +42,11 @@ export function useApproveApplication(id: string, onDone?: (businessId: string) 
     invalidate: KEYS,
     onSuccess: (data) => onDone?.(data.businessId),
   });
+}
+
+/** Retries the owner's login creation (GAP-045); the server message carries the temporary password. */
+export function useCreateOwnerLogin(id: string) {
+  return useAdminMutation(() => createOwnerLogin(id), { invalidate: KEYS });
 }
 
 export function useRejectApplication(id: string) {
