@@ -30,7 +30,7 @@ import {
 } from "../lookups";
 import { route } from "../router";
 import { setCommissionRate } from "./finance";
-import { pushVendorNotification } from "../vendor/notify";
+import { pushVendorNotification } from "../shared/notify";
 import type { MockDatabase } from "../schema";
 
 const BUSINESS_STATUSES: BusinessStatus[] = ["pending", "approved", "active", "suspended", "rejected"];

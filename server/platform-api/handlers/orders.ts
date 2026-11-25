@@ -5,8 +5,8 @@ import { logAudit, now, pushAdminNotification } from "../db";
 import { MockApiError, countBy, matchesSearch, ok, paginate, requireText, sortBy } from "../http";
 import { UPCOMING_STATUSES, findOrThrow, toOrderListItem } from "../lookups";
 import { route } from "../router";
-import { readableCancelReason } from "../vendor/engine";
-import { pushVendorNotification } from "../vendor/notify";
+import { readableCancelReason } from "../shared/cancel-reason";
+import { pushVendorNotification } from "../shared/notify";
 
 const STATUSES: OrderStatus[] = ["pending", "confirmed", "waiting", "in_service", "completed", "cancelled", "no_show"];
 

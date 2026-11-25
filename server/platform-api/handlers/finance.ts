@@ -15,7 +15,7 @@ import { MockApiError, countBy, matchesSearch, ok, paginate, requireText, sortBy
 import { adminName, businessName, findOrThrow } from "../lookups";
 import { payoutIncrement, settlementPeriod } from "../finance-rules";
 import { route } from "../router";
-import { pushVendorNotification } from "../vendor/notify";
+import { pushVendorNotification } from "../shared/notify";
 import type { MockDatabase } from "../schema";
 
 const TXN_STATUSES: TransactionStatus[] = ["pending", "paid", "refunded", "settled"];

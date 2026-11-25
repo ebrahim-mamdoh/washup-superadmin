@@ -6,7 +6,7 @@ import { assertChecklist } from "../../application-rules";
 import { MockApiError, ok, requireText } from "../../http";
 import { defaultPermissions } from "../../seed";
 import { createLogin, isLocalAuth, loginNotice } from "../auth";
-import { DEFAULT_NOTIFICATION_PREFS } from "../../vendor/notify";
+import { DEFAULT_NOTIFICATION_PREFS } from "../../shared/notify";
 import { PHONE, applicationsWhere } from "../entities";
 import { countsOf, orderBy, paged, searchPattern } from "../list";
 import { logAudit, pushAdminNotification, pushVendorNotification } from "../platform";

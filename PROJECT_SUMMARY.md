@@ -7,8 +7,9 @@
 > `@carzen/platform-api` → `server/platform-api/` (served by `app/api/v1/[...path]/route.ts`; this app answers
 > `/api/v1/admin/*` only). Paths to `../packages/...` below map to those folders.
 > Data source: `CARZEN_DATA_SOURCE=supabase` + `.env.example` (use the Supabase **session** pooler, port 5432).
-> `server/platform-api/` is shared code with `washup-vendor`: change both repos (only `index.ts`'s namespace
-> guard differs). New admins, approved wash owners and vendor staff get a Supabase Auth login with a
+> `server/platform-api/` serves the **admin namespace only** (the dead `/vendor/*` copy was deleted, GAP-054);
+> the core still duplicated with `washup-vendor` is listed in §11 — change it in both repos and run
+> `npm run check:shared`. New admins, approved wash owners and vendor staff get a Supabase Auth login with a
 > temporary password (needs `SUPABASE_SECRET_KEY`), shown once in the success message.
 
 > Full context for any engineer or AI session. Read `../CLAUDE.md` (repo overview + history)
@@ -46,6 +47,7 @@ npm run dev            # http://localhost:3100
 npm run build          # production build (must pass)
 npm run typecheck      # tsc --noEmit
 npm run lint           # eslint
+npm run check:shared   # drift of the code duplicated with ../vendor (§11); exit 1 on drift
 ```
 
 - Login `sara@carzen.demo` / `demo1234` (prefilled; "دخول سريع" button).
@@ -86,11 +88,15 @@ lib/
 types/react-query.d.ts       # mutation meta typing
 public/logo.svg
 
-../packages/contracts/src/      # @carzen/contracts/<domain> — domain + API types (admin + vendor/*)
-../packages/ui/src/             # @carzen/ui/components/ui/*     — shadcn base-nova primitives (see §8)
-                                # @carzen/ui/components/shared/* — building blocks (§6) + brand-logo, theme-toggle
-                                # @carzen/ui/lib/{format,export-csv,utils,constants/labels} · hooks/* · styles/theme.css
-../packages/platform-api/src/   # @carzen/platform-api — server-only mock backend (§4), admin + vendor namespaces
+types/                          # domain + API types (admin); types/vendor/{catalog,insights,team}.ts keep only the
+                                # wash-inbox / day-closing record types the mock store and admin actions use
+components/ui/*                 # shadcn base-nova primitives (see §8)
+components/shared/*             # building blocks (§6) + brand-logo, theme-toggle
+lib/{format,export-csv,utils,constants/labels} · hooks/* · styles/theme.css
+server/platform-api/            # server-only API (§4), admin namespace only; shared/ = helpers admin code needs
+                                # that used to live in the partner portal's vendor engine (notify, time, phone,
+                                # cancel-reason)
+scripts/shared-drift.mjs        # `npm run check:shared` — drift check against ../vendor (§11)
 ```
 
 ## 4. Mock API (`../packages/platform-api/src/`)
@@ -99,9 +105,15 @@ public/logo.svg
 > `src/pg/` (one module per mock module, same contracts). A new or changed route must be
 > implemented in both, then checked with `supabase/scripts/api-parity.mjs` (see `supabase/README.md`).
 
-- `index.ts` route table + dispatcher: matches `method + /path/:param`, simulates latency, checks
-  Bearer token (`db.sessions[token] → adminId`; `/vendor/*` uses `db.vendorSessions`), converts
-  `MockApiError` to `{status:false}`.
+- `index.ts` route table + dispatcher: answers `/admin/*` only (anything else → 404), matches
+  `method + /path/:param`, simulates latency, checks Bearer token (`db.sessions[token] → adminId`),
+  converts `MockApiError` to `{status:false}`. `pg/index.ts` is the same for Postgres (`pg/admin/*`).
+- `shared/`: `notify.ts` (`pushVendorNotification`, `vendorSettingsFor`, `DEFAULT_NOTIFICATION_PREFS` —
+  admin actions drop notices in the wash inbox), `time.ts` (`zoneDateParts`, `zoneLocalToUtc`),
+  `phone.ts` (`nationalPhone`, `prettyPhone`), `cancel-reason.ts` (`readableCancelReason`). Same
+  declarations as the partner portal's `vendor/{notify,engine}.ts` (checked by `npm run check:shared`).
+  The mock store (`schema.ts`/`seed.ts`) still holds the partner data (`vendorSessions`,
+  `vendorNotifications`, `dayClosings`…) because both apps share `.carzen/platform-db.json`.
 - `db.ts`: DB cached on `globalThis` **and persisted to `<repo>/.carzen/platform-db.json`** (override
   with `CARZEN_DB_FILE`) so the Super Admin and the Vendor Portal — two Next processes — share one
   dataset (mtime-based reload; atomic temp-file + rename write after every successful non-GET).
@@ -228,3 +240,36 @@ commission 0–30%; offer percent ≤ 50%; hiding a review recomputes ratings.
 - English locale / i18n.
 - Shared polish: `definition` prop on `KpiCard`; `totalsRow` in `DataTable`; modules still keep local status maps — switch them to the shared `STAFF_STATUS` / `BRANCH_STATUS` / `ADMIN_STATUS` now in labels; keep API `errors` per field in `throwApiError`; `washId` filter on complaints; paging in `useNotifications`; document URLs + previews on applications.
 - When the Laravel API arrives: point `NEXT_PUBLIC_API_URL` at it, align field names (backend may use snake_case — adapt in services, not components), then delete `app/api/v1` (and `packages/platform-api` once no app uses it).
+
+## 11. Shared code with the partner portal (GAP-054)
+
+The partner portal (`../vendor`, repo `washup-vendor`) carries its own copy of the core below. Until it
+becomes one package, **a change to any of these files must be made in both repos**, then
+`npm run check:shared` (or `node scripts/shared-drift.mjs <path-to-vendor>`) must report no drift.
+The authoritative list is `FILES` / `SYMBOLS` in `scripts/shared-drift.mjs`; update it when a file
+joins or leaves the shared core.
+
+- **Byte-identical files:** `components/ui/*` (26 primitives); `components/shared/*` building blocks
+  (all except `country-filter.tsx` and `layout/*`), `components/shared/layout/push-toggle.tsx`,
+  `components/shared/maps/*`; `components/providers/{query-provider,firebase-analytics}.tsx`;
+  `hooks/use-{debounced-value,url-state,web-push}.ts`; `lib/{utils,format,export-csv}.ts`,
+  `lib/api/{request,api-error-handler}.ts`, `lib/cache/ttl.ts`, `lib/config/api-base-url.ts`,
+  `lib/firebase/*`; `styles/theme.css`; every `types/*.ts` contract (+ `react-query.d.ts`);
+  `server/platform-api/{db,seed,http,lookups}.ts` (one mock store file for both apps) and
+  `server/platform-api/pg/{sql,list,fcm}.ts`.
+- **Same declarations (rest of the file is app-specific):** `server/platform-api/shared/*` against the
+  portal's `vendor/{notify,engine}.ts` / `phone.ts`; `types/vendor/{catalog,insights,team}.ts`;
+  every declaration both repos have in `lib/constants/labels.ts`, `server/platform-api/{schema,router,throttle}.ts`
+  and `server/platform-api/pg/{auth,entities,lookups,platform,push,router}.ts`.
+- **App-specific (not checked):** dispatchers (`index.ts`, `pg/index.ts`), admin handlers
+  (`handlers/*`, `pg/admin/*`), `permissions.ts`, `server/web-session.ts`, `lib/axios.ts`, stores,
+  services, hooks per domain, layout and modules.
+
+Drift found when the check was added (2026-11-25), all fixes that landed in one repo only:
+UI `export-csv-button.tsx`, `reason-dialog.tsx`, `maps/google-map.tsx`, `lib/export-csv.ts` (GAP-076
+export of every page is vendor-only); contracts `types/{auth,dashboard,finance,orders,washes}.ts`;
+`pg/sql.ts` (pool size 3 here vs 1 there); `prettyPhone` (multi-country GAP-013 only in vendor);
+labels `PAYOUT_STATUS`, `AUDIT_ENTITY`; `schema.ts` `MockDatabase` (GAP-095 read receipts);
+`router.ts` `HandlerContext` / `pg/router.ts` `PgAdminContext` (the portal's dead admin copy predates
+GAP-012); `throttle.ts` (GAP-064 variants); `pg/auth.ts` `rememberToken`; `pg/entities.ts` `PHONE`,
+`BRANCH_COLS`, `TRANSACTION_COLS`, `PAYOUT_COLS`; `pg/push.ts` `recipientsOf` (GAP-050 vs GAP-012/095).

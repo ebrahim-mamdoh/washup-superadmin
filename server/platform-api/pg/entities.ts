@@ -10,14 +10,11 @@ import type { AdminNotification } from "@/types/notifications";
 import type { Offer } from "@/types/offers";
 import type { Order } from "@/types/orders";
 import type { Review } from "@/types/reviews";
-import type { VendorNotification } from "@/types/vendor/insights";
-import type { DayClosing } from "@/types/vendor/team";
 import type { Branch, Business, Staff, WashService } from "@/types/washes";
 import type postgres from "postgres";
 
 import { MockApiError } from "../http";
-import { nationalPhone, prettyPhone } from "../vendor/engine";
-import type { Shift } from "../schema";
+import { prettyPhone } from "../shared/phone";
 import { ISO, type Q } from "./sql";
 
 /**
@@ -40,8 +37,6 @@ type Frag = postgres.Fragment;
 
 /** E.164 → the API display format (`+20 120 000 0007`, `+20 2 2555 0142`; same as the mock `prettyPhone`). */
 export const apiPhone = (p: string | null): string => (p ? prettyPhone(p) : "");
-/** Any Egyptian number (mobile or landline, with or without +20 / 0) → E.164. */
-export const e164 = (p: string): string => `+20${nationalPhone(p)}`;
 
 /** SQL for `apiPhone(col)`: the national number (see `nationalPhone`) in `prettyPhone`'s groups. */
 export const PHONE = (col: string) =>
@@ -186,25 +181,7 @@ export const APPLICATION_COLS = `ap.id, ap.business_name as "businessName", ap.o
   ap.status, ap.review_note as "reviewNote", ap.submitted_at as "submittedAt", ap.reviewed_at as "reviewedAt", ap.business_id as "businessId"`;
 export const applicationsWhere = (q: Q, cond: Frag, tail?: Frag) => select<WashApplication>(q, APPLICATION_COLS, "public.wash_applications ap", cond, tail);
 
-// ── Team (shifts sh, day closings dc) ────────────────────────────────────────
-
-export const SHIFT_COLS = `sh.id, sh.staff_id as "staffId", sh.branch_id as "branchId", sh.scheduled_start as "scheduledStart",
-  sh.scheduled_end as "scheduledEnd", sh.actual_start as "actualStart", sh.actual_end as "actualEnd",
-  sh.orders_completed as "ordersCompleted", sh.cash_payments as "cashPayments", sh.card_payments as "cardPayments",
-  sh.expected_cash as "expectedCash", sh.actual_cash as "actualCash", sh.difference, sh.difference_reason as reason,
-  sh.review_status as "reviewStatus", sh.review_note as "reviewNote", sh.reviewed_by as "reviewedBy"`;
-export const shiftsWhere = (q: Q, cond: Frag, tail?: Frag) => select<Shift>(q, SHIFT_COLS, "public.staff_shifts sh", cond, tail);
-
-export const DAY_CLOSING_COLS = `dc.id, dc.branch_id as "branchId", dc.date,
-  json_build_object('cash', dc.expected_cash, 'card', dc.expected_card, 'online', dc.expected_online,
-    'total', dc.expected_cash + dc.expected_card + dc.expected_online) as expected,
-  json_build_object('cash', dc.actual_cash, 'card', dc.actual_card, 'online', dc.actual_online,
-    'total', dc.actual_cash + dc.actual_card + dc.actual_online) as actual,
-  dc.difference, dc.reason, dc.orders_locked as "ordersLocked", dc.closed_by as "closedBy",
-  coalesce((select s.name from public.staff s where s.id = dc.closed_by), '') as "closedByName", dc.closed_at as "closedAt"`;
-export const dayClosingsWhere = (q: Q, cond: Frag, tail?: Frag) => select<DayClosing>(q, DAY_CLOSING_COLS, "public.day_closings dc", cond, tail);
-
-// ── Platform people & activity (admins a, audit al, notifications an / vn) ──
+// ── Platform people & activity (admins a, audit al, notifications an) ──
 
 export const ADMIN_COLS = `a.id, a.name, a.email, a.role, a.status, a.last_login_at as "lastLoginAt", a.created_at as "createdAt"`;
 export const adminsWhere = (q: Q, cond: Frag, tail?: Frag) => select<AdminUser>(q, ADMIN_COLS, "public.admin_users a", cond, tail);
@@ -218,8 +195,3 @@ export const auditWhere = (q: Q, cond: Frag, tail?: Frag) => select<AuditLog>(q,
 export const ADMIN_NOTIFICATION_COLS = `an.id, an.type, an.title, an.body, an.href, an.read, an.created_at as "createdAt"`;
 export const adminNotificationsWhere = (q: Q, cond: Frag, tail?: Frag) =>
   select<AdminNotification>(q, ADMIN_NOTIFICATION_COLS, "public.admin_notifications an", cond, tail);
-
-export const VENDOR_NOTIFICATION_COLS = `vn.id, vn.business_id as "businessId", vn.branch_id as "branchId", vn.type, vn.title, vn.body, vn.href,
-  vn.read, vn.created_at as "createdAt"`;
-export const vendorNotificationsWhere = (q: Q, cond: Frag, tail?: Frag) =>
-  select<VendorNotification>(q, VENDOR_NOTIFICATION_COLS, "public.vendor_notifications vn", cond, tail);

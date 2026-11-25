@@ -6,7 +6,7 @@ import type { ActorType } from "@/types/orders";
 import type { VendorNotificationType } from "@/types/vendor/catalog";
 
 import type { VendorBusinessSettings } from "../schema";
-import { DEFAULT_NOTIFICATION_PREFS } from "../vendor/notify";
+import { DEFAULT_NOTIFICATION_PREFS } from "../shared/notify";
 import { apiPhone } from "./entities";
 import { queuePush } from "./push";
 import type { Q } from "./sql";
@@ -14,7 +14,7 @@ import type { Q } from "./sql";
 /**
  * Cross-cutting writes every module shares: the audit log, admin and vendor
  * notifications, plus platform-level reads (default commission, wash settings).
- * Same rules as the mock helpers in `../db.ts` and `../vendor/notify.ts`.
+ * Same rules as the mock helpers in `../db.ts` and `../shared/notify.ts`.
  */
 
 const toText = (v: unknown) => (v === undefined || v === null ? null : typeof v === "string" ? v : JSON.stringify(v));

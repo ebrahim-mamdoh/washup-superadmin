@@ -8,10 +8,8 @@ import { type HttpMethod, matchPath } from "../router";
 import { resolveAdmin } from "./admin/auth";
 import { ADMIN_ROUTES } from "./admin";
 import { identityFromToken } from "./auth";
-import type { PgAdminContext, PgRouteDef, PgVendorContext } from "./router";
+import type { PgAdminContext, PgRouteDef } from "./router";
 import { db } from "./sql";
-import { VENDOR_ROUTES } from "./vendor";
-import { resolveVendorActor } from "./vendor/scope";
 
 async function readBody(req: Request): Promise<Record<string, unknown>> {
   if (req.method === "GET" || req.method === "DELETE") return {};
@@ -32,13 +30,9 @@ const EXPIRED = "انتهت الجلسة، يرجى تسجيل الدخول مر
 export async function handleSupabaseRequest(req: Request, segments: string[]): Promise<Response> {
   const path = `/${segments.join("/")}`;
   const method = req.method.toUpperCase() as HttpMethod;
-  const isVendor = path.startsWith("/vendor/");
 
-  const table: PgRouteDef<PgAdminContext | PgVendorContext>[] = (isVendor ? VENDOR_ROUTES : ADMIN_ROUTES) as PgRouteDef<
-    PgAdminContext | PgVendorContext
-  >[];
-  let matched: { def: PgRouteDef<PgAdminContext | PgVendorContext>; params: Record<string, string> } | null = null;
-  for (const def of table) {
+  let matched: { def: PgRouteDef<PgAdminContext>; params: Record<string, string> } | null = null;
+  for (const def of ADMIN_ROUTES) {
     if (def.method !== method) continue;
     const params = matchPath(def.path, path);
     if (params) {
@@ -55,18 +49,13 @@ export async function handleSupabaseRequest(req: Request, segments: string[]): P
   try {
     const sql = db();
     const identity = token ? await identityFromToken(token) : null;
-    if (isVendor) {
-      const actor = identity ? await resolveVendorActor(sql, identity) : null;
-      if (!matched.def.isPublic && !actor) return fail(EXPIRED, 401);
-      return await (matched.def as PgRouteDef<PgVendorContext>).handler({ ...base, actor: actor! });
-    }
     const admin = identity ? await resolveAdmin(sql, identity) : null;
     if (!matched.def.isPublic) {
       if (!admin) return fail(EXPIRED, 401);
       // Per-route permission from the roles matrix (GAP-012); unmapped routes are Super Admin only.
       if (!canAccess(admin.role, admin.permissions, routeAccess(method, matched.def.path))) return fail(FORBIDDEN, 403);
     }
-    return await (matched.def as PgRouteDef<PgAdminContext>).handler({ ...base, admin: admin! });
+    return await matched.def.handler({ ...base, admin: admin! });
   } catch (error) {
     if (error instanceof MockApiError) return fail(error.message, error.httpStatus, error.errors);
     // Integrity rules enforced by the database (checks, FKs, uniques) surface as validation errors.

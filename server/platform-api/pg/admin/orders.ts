@@ -3,7 +3,7 @@ import "server-only";
 import type { Order, OrderDetails, OrderStatus } from "@/types/orders";
 
 import { MockApiError, ok, requireText } from "../../http";
-import { readableCancelReason } from "../../vendor/engine";
+import { readableCancelReason } from "../../shared/cancel-reason";
 import { UPCOMING_STATUSES } from "../../lookups";
 import {
   auditWhere,

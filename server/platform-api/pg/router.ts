@@ -2,7 +2,7 @@ import "server-only";
 
 import type { AdminSession } from "@/types/auth";
 
-import type { HttpMethod, VendorActor } from "../router";
+import type { HttpMethod } from "../router";
 
 /**
  * Route definitions for the Supabase data source. Same paths, params and
@@ -19,16 +19,6 @@ export interface PgAdminContext {
   headers: Headers;
 }
 
-export interface PgVendorContext {
-  params: Record<string, string>;
-  query: URLSearchParams;
-  body: Record<string, unknown>;
-  /** Signed-in owner/manager and the branches they may see (null only on public routes). */
-  actor: VendorActor;
-  token: string | null;
-  headers: Headers;
-}
-
 export interface PgRouteDef<C> {
   method: HttpMethod;
   path: string;
@@ -37,9 +27,5 @@ export interface PgRouteDef<C> {
 }
 
 export function route(method: HttpMethod, path: string, handler: (ctx: PgAdminContext) => Promise<Response>, isPublic = false): PgRouteDef<PgAdminContext> {
-  return { method, path, handler, isPublic };
-}
-
-export function vroute(method: HttpMethod, path: string, handler: (ctx: PgVendorContext) => Promise<Response>, isPublic = false): PgRouteDef<PgVendorContext> {
   return { method, path, handler, isPublic };
 }

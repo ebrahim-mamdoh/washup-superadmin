@@ -5,7 +5,7 @@ import { logAudit, round2 } from "../db";
 import { MockApiError, matchesSearch, ok, paginate, requireText, sortBy } from "../http";
 import { branchName, businessName, customerName, findOrThrow } from "../lookups";
 import { route } from "../router";
-import { pushVendorNotification } from "../vendor/notify";
+import { pushVendorNotification } from "../shared/notify";
 import { recomputeRatings } from "../seed";
 
 const HIDE_REASONS: Record<HideReviewReason, string> = {

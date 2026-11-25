@@ -7,7 +7,7 @@ import { MockApiError, countBy, matchesSearch, ok, paginate, requireText, sortBy
 import { findOrThrow } from "../lookups";
 import { route } from "../router";
 import { defaultPermissions } from "../seed";
-import { pushVendorNotification, vendorSettingsFor } from "../vendor/notify";
+import { pushVendorNotification, vendorSettingsFor } from "../shared/notify";
 
 const STATUSES: ApplicationStatus[] = ["pending", "needs_changes", "approved", "rejected"];
 

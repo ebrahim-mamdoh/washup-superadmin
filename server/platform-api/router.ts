@@ -1,8 +1,6 @@
 import "server-only";
 
 import type { AdminPermissions } from "@/types/auth";
-import type { VendorRole } from "@/types/vendor/auth";
-import type { Business, Staff } from "@/types/washes";
 
 import type { MockDatabase, StoredAdmin } from "./schema";
 
@@ -56,36 +54,4 @@ export function matchPath(pattern: string, path: string): Record<string, string>
     }
   }
   return params;
-}
-
-// ── Vendor namespace (/vendor/*) ─────────────────────────────
-
-/** Signed-in wash account + the branches it may see (owner: all, manager: own branch). */
-export interface VendorActor {
-  staff: Staff;
-  business: Business;
-  role: VendorRole;
-  branchIds: string[];
-}
-
-export interface VendorHandlerContext {
-  db: MockDatabase;
-  params: Record<string, string>;
-  query: URLSearchParams;
-  body: Record<string, unknown>;
-  actor: VendorActor;
-  token: string | null;
-}
-
-export type VendorHandler = (ctx: VendorHandlerContext) => Response | Promise<Response>;
-
-export interface VendorRouteDef {
-  method: HttpMethod;
-  path: string;
-  handler: VendorHandler;
-  isPublic?: boolean;
-}
-
-export function vroute(method: HttpMethod, path: string, handler: VendorHandler, isPublic = false): VendorRouteDef {
-  return { method, path, handler, isPublic };
 }

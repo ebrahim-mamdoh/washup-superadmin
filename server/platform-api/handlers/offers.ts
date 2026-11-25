@@ -7,7 +7,7 @@ import { findOrThrow } from "../lookups";
 import { MAX_FIXED_DISCOUNT } from "../offer-rules";
 import { route } from "../router";
 import type { MockDatabase } from "../schema";
-import { pushVendorNotification } from "../vendor/notify";
+import { pushVendorNotification } from "../shared/notify";
 
 const STATUSES: OfferStatus[] = ["draft", "scheduled", "active", "expired", "disabled"];
 

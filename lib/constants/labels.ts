@@ -9,10 +9,6 @@ import type { OfferStatus } from "@/types/offers";
 import type { OrderSource, OrderStatus, PaymentMethod, PaymentStatus } from "@/types/orders";
 import type { HideReviewReason } from "@/types/reviews";
 import type { BusinessStatus, StaffRole, StaffStatus, SuspendReason } from "@/types/washes";
-import type { VendorNotificationType } from "@/types/vendor/catalog";
-import type { CustomerSegment } from "@/types/vendor/insights";
-import type { OrderAction } from "@/types/vendor/operations";
-import type { ShiftClosingStatus } from "@/types/vendor/team";
 import type { AdminStatus } from "@/types/auth";
 
 /**
@@ -390,45 +386,4 @@ export const ADMIN_STATUS: Record<AdminStatus, StatusMeta> = {
 export const BRANCH_STATUS: Record<"active" | "inactive", StatusMeta> = {
   active: { label: "نشط", tone: TONES.success },
   inactive: { label: "متوقف", tone: TONES.neutral },
-};
-
-export const SHIFT_STATUS: Record<ShiftClosingStatus, StatusMeta> = {
-  open: { label: "جارية", tone: TONES.info },
-  submitted: { label: "بانتظار المراجعة", tone: TONES.warning },
-  reviewed: { label: "تمت المراجعة", tone: TONES.success },
-  flagged: { label: "للمتابعة", tone: TONES.danger },
-};
-
-export const CUSTOMER_SEGMENT: Record<CustomerSegment, StatusMeta & { description: string }> = {
-  new: { label: "جديد", tone: TONES.info, description: "زيارة واحدة أو أول زيارة خلال 30 يوم" },
-  returning: { label: "متكرر", tone: TONES.success, description: "زيارتين أو أكثر" },
-  lost: { label: "منقطع", tone: TONES.danger, description: "لا زيارات منذ أكثر من 60 يوم" },
-};
-
-export const VENDOR_NOTIFICATION_TYPE: Record<VendorNotificationType, StatusMeta> = {
-  new_booking: { label: "حجز جديد", tone: TONES.primary },
-  booking_cancelled: { label: "إلغاء حجز", tone: TONES.danger },
-  cash_difference: { label: "فرق نقدية", tone: TONES.danger },
-  high_cancellation: { label: "إلغاءات مرتفعة", tone: TONES.warning },
-  branch_issue: { label: "تنبيه فرع", tone: TONES.warning },
-  daily_summary: { label: "ملخص يومي", tone: TONES.neutral },
-  review: { label: "تقييمات", tone: TONES.violet },
-  platform: { label: "من Wash Up", tone: TONES.info },
-  payout: { label: "مستحقات", tone: TONES.success },
-};
-
-/** Primary + secondary order actions as worded for wash staff (spec EM-06). */
-export const ORDER_ACTION: Record<OrderAction, { label: string; tone: Tone }> = {
-  confirm: { label: "تأكيد الحجز", tone: "var(--st-confirmed)" },
-  check_in: { label: "تسجيل الوصول", tone: "var(--st-waiting)" },
-  start: { label: "بدء الخدمة", tone: "var(--st-in_service)" },
-  complete: { label: "إكمال الخدمة", tone: "var(--st-completed)" },
-  collect_payment: { label: "تحصيل الدفع", tone: TONES.success },
-  cancel: { label: "إلغاء الطلب", tone: TONES.danger },
-  no_show: { label: "لم يحضر", tone: TONES.neutral },
-  assign: { label: "تعيين موظف", tone: TONES.primary },
-  add_service: { label: "إضافة خدمة", tone: TONES.aqua },
-  discount: { label: "خصم", tone: TONES.warning },
-  note: { label: "ملاحظة", tone: TONES.neutral },
-  refund: { label: "استرداد", tone: TONES.danger },
 };
