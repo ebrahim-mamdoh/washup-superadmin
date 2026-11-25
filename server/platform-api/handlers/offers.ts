@@ -4,7 +4,10 @@ import type { Offer, OfferListItem, OfferStatus } from "@/types/offers";
 import { logAudit, nid, now } from "../db";
 import { MockApiError, countBy, matchesSearch, ok, paginate, requireText, sortBy } from "../http";
 import { findOrThrow } from "../lookups";
+import { MAX_FIXED_DISCOUNT } from "../offer-rules";
 import { route } from "../router";
+import type { MockDatabase } from "../schema";
+import { pushVendorNotification } from "../vendor/notify";
 
 const STATUSES: OfferStatus[] = ["draft", "scheduled", "active", "expired", "disabled"];
 
@@ -26,6 +29,9 @@ function parsePayload(body: Record<string, unknown>) {
   const discountValue = Number(body.discountValue);
   if (Number.isNaN(discountValue) || discountValue <= 0) throw new MockApiError("قيمة الخصم غير صالحة", 422);
   if (discountType === "percent" && discountValue > 50) throw new MockApiError("الحد الأقصى للخصم ٥٠٪", 422);
+  if (discountType === "fixed" && discountValue > MAX_FIXED_DISCOUNT) {
+    throw new MockApiError(`الحد الأقصى للخصم الثابت ${MAX_FIXED_DISCOUNT}`, 422, { discountValue: ["قيمة الخصم الثابت كبيرة"] });
+  }
   const startAt = new Date(String(body.startAt));
   const endAt = new Date(String(body.endAt));
   if (Number.isNaN(+startAt) || Number.isNaN(+endAt) || endAt <= startAt) {
@@ -43,6 +49,17 @@ function parsePayload(body: Record<string, unknown>) {
     branchIds,
     serviceCategories: Array.isArray(body.serviceCategories) ? body.serviceCategories.map(String) : [],
   };
+}
+
+/** Offer targets must exist and a fixed discount stays below the cheapest targeted service (GAP-090). */
+function validateTargets(db: MockDatabase, data: ReturnType<typeof parsePayload>) {
+  if (data.branchIds.some((id) => !db.branches.some((b) => b.id === id))) throw new MockApiError("فرع غير موجود ضمن الفروع المختارة", 422);
+  const prices = db.services
+    .filter((s) => data.branchIds.includes(s.branchId) && s.active && s.type === "primary" && (!data.serviceCategories.length || data.serviceCategories.includes(s.category)))
+    .map((s) => s.price);
+  if (data.discountType === "fixed" && prices.length && data.discountValue >= Math.min(...prices)) {
+    throw new MockApiError(`الخصم الثابت يجب أن يكون أقل من أرخص خدمة مشمولة (${Math.min(...prices)})`, 422);
+  }
 }
 
 export const offerRoutes = [
@@ -66,6 +83,7 @@ export const offerRoutes = [
 
   route("POST", "/admin/offers", ({ db, body, admin }) => {
     const data = parsePayload(body);
+    validateTargets(db, data);
     const offer: Offer = { id: nid("of"), scope: "platform", businessId: null, featured: false, status: body.publish ? "active" : "draft", ...data };
     offer.status = deriveStatus(offer);
     db.offers.unshift(offer);
@@ -77,6 +95,7 @@ export const offerRoutes = [
     const offer = findOrThrow(db.offers, params.id, "العرض");
     if (offer.scope !== "platform") throw new MockApiError("عروض المغاسل تُدار من لوحة المغسلة", 403);
     const data = parsePayload(body);
+    validateTargets(db, data);
     const before = { ...offer };
     Object.assign(offer, data);
     if (body.publish && offer.status === "draft") offer.status = "active";
@@ -88,10 +107,16 @@ export const offerRoutes = [
   route("POST", "/admin/offers/:id/status", ({ db, params, body, admin }) => {
     const offer = findOrThrow(db.offers, params.id, "العرض");
     const enable = Boolean(body.enabled);
+    // Scope rule (GAP-090): wash offers can be switched off/on here as moderation (edited only in the
+    // wash portal); switching off needs a reason and the wash is told.
+    const reason = enable ? (typeof body.reason === "string" ? body.reason.trim() : "") : requireText(body.reason, "reason", "سبب الإيقاف", 5);
     const old = deriveStatus(offer);
     offer.status = enable ? "active" : "disabled";
     offer.status = deriveStatus(offer);
-    logAudit(db, { actorId: admin.id, action: enable ? "enable_offer" : "disable_offer", entity: "offers", entityId: offer.id, oldValue: old, newValue: offer.status, reason: typeof body.reason === "string" ? body.reason : null });
+    logAudit(db, { actorId: admin.id, action: enable ? "enable_offer" : "disable_offer", entity: "offers", entityId: offer.id, oldValue: old, newValue: offer.status, reason: reason || null });
+    if (offer.scope !== "platform" && offer.businessId) {
+      pushVendorNotification(db, offer.businessId, null, "platform", enable ? "أعادت Wash Up تفعيل عرضك" : "أوقفت Wash Up عرضك", enable ? `العرض «${offer.title.ar}» مفعل مجددًا.` : `العرض «${offer.title.ar}» موقوف — السبب: ${reason}`, "/offers");
+    }
     return ok(offer, enable ? "تم تفعيل العرض" : "تم إيقاف العرض");
   }),
 ];

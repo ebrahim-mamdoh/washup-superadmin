@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 import type { DiscountType, OfferListItem } from "@/types/offers";
 
 const MAX_PERCENT = 50;
+/** Same cap as the API (GAP-090); the API also keeps it below the cheapest targeted service. */
+const MAX_FIXED = 1000;
 
 const schema = z
   .object({
@@ -39,6 +41,10 @@ const schema = z
   .refine((v) => v.discountType !== "percent" || Number(v.discountValue) <= MAX_PERCENT, {
     path: ["discountValue"],
     message: `الحد الأقصى للخصم ${MAX_PERCENT}٪`,
+  })
+  .refine((v) => v.discountType !== "fixed" || Number(v.discountValue) <= MAX_FIXED, {
+    path: ["discountValue"],
+    message: `الحد الأقصى للخصم الثابت ${MAX_FIXED}`,
   })
   .refine((v) => !v.startAt || !v.endAt || new Date(v.endAt) > new Date(v.startAt), {
     path: ["endAt"],

@@ -6,7 +6,8 @@ import { now } from "../../db";
 import { MockApiError, ok, requireText } from "../../http";
 import { OFFER_COLS, offersWhere } from "../entities";
 import { countsOf, orderBy, paged, searchPattern } from "../list";
-import { logAudit } from "../platform";
+import { MAX_FIXED_DISCOUNT } from "../../offer-rules";
+import { logAudit, pushVendorNotification } from "../platform";
 import { route } from "../router";
 import { type Q, db, tx } from "../sql";
 
@@ -37,6 +38,9 @@ function parsePayload(body: Record<string, unknown>) {
   const discountValue = Number(body.discountValue);
   if (Number.isNaN(discountValue) || discountValue <= 0) throw new MockApiError("قيمة الخصم غير صالحة", 422);
   if (discountType === "percent" && discountValue > 50) throw new MockApiError("الحد الأقصى للخصم ٥٠٪", 422);
+  if (discountType === "fixed" && discountValue > MAX_FIXED_DISCOUNT) {
+    throw new MockApiError(`الحد الأقصى للخصم الثابت ${MAX_FIXED_DISCOUNT}`, 422, { discountValue: ["قيمة الخصم الثابت كبيرة"] });
+  }
   const startAt = new Date(String(body.startAt));
   const endAt = new Date(String(body.endAt));
   if (Number.isNaN(+startAt) || Number.isNaN(+endAt) || endAt <= startAt) {
@@ -54,6 +58,29 @@ function parsePayload(body: Record<string, unknown>) {
     branchIds: [...new Set(branchIds)],
     serviceCategories: [...new Set(Array.isArray(body.serviceCategories) ? body.serviceCategories.map(String) : [])],
   };
+}
+
+/**
+ * Offer targets must exist (GAP-090): unknown branches/categories are a 422, not a foreign-key error,
+ * and a fixed discount must stay below the cheapest active primary service it can apply to
+ * (a service never becomes free or negative).
+ */
+async function validateTargets(q: Q, data: ReturnType<typeof parsePayload>) {
+  const [found] = await q<{ branches: number; categories: number; minPrice: number | null }[]>`
+    select (select count(*)::int from public.branches where id = any(${data.branchIds}::text[])) as branches,
+           (select count(*)::int from public.service_categories where id = any(${data.serviceCategories}::text[])) as categories,
+           (select min(s.price) from public.services s
+             where s.branch_id = any(${data.branchIds}::text[]) and s.active and s.type = 'primary'
+               and (cardinality(${data.serviceCategories}::text[]) = 0 or s.category_id = any(${data.serviceCategories}::text[]))) as "minPrice"`;
+  if (found.branches !== data.branchIds.length) throw new MockApiError("فرع غير موجود ضمن الفروع المختارة", 422, { branchIds: ["فرع غير موجود"] });
+  if (found.categories !== data.serviceCategories.length) {
+    throw new MockApiError("فئة خدمة غير موجودة", 422, { serviceCategories: ["فئة غير موجودة"] });
+  }
+  if (data.discountType === "fixed" && found.minPrice !== null && data.discountValue >= Number(found.minPrice)) {
+    throw new MockApiError(`الخصم الثابت يجب أن يكون أقل من أرخص خدمة مشمولة (${Number(found.minPrice)})`, 422, {
+      discountValue: ["أكبر من سعر خدمة مشمولة"],
+    });
+  }
 }
 
 async function offerById(q: Q, id: string): Promise<Offer> {
@@ -108,6 +135,7 @@ export const offerRoutes = [
     const data = parsePayload(body);
     const status = deriveStatus({ status: body.publish ? "active" : "draft", startAt: data.startAt, endAt: data.endAt });
     const offer = await tx(async (t) => {
+      await validateTargets(t, data);
       const [row] = await t<{ id: string }[]>`
         insert into public.offers (scope, business_id, title, description, discount_type, discount_value, starts_at, ends_at, status, featured)
         values ('platform', null, ${t.json(data.title)}, ${t.json(data.description)}, ${data.discountType}, ${data.discountValue},
@@ -132,6 +160,7 @@ export const offerRoutes = [
       const current = await offerById(t, params.id);
       if (current.scope !== "platform") throw new MockApiError("عروض المغاسل تُدار من لوحة المغسلة", 403);
       const data = parsePayload(body);
+      await validateTargets(t, data);
       const stored = body.publish && current.status === "draft" ? "active" : current.status;
       const status = deriveStatus({ status: stored, startAt: data.startAt, endAt: data.endAt });
       await t`
@@ -153,8 +182,12 @@ export const offerRoutes = [
     return ok(offer, "تم تحديث العرض");
   }),
 
+  // Scope rule (GAP-090): platform offers are created/edited here; a wash's own offer is edited only
+  // in its portal, but the platform may switch it off/on as moderation. Switching off needs a reason,
+  // and the wash is told when the platform switches its offer.
   route("POST", "/admin/offers/:id/status", async ({ params, body, admin }) => {
     const enable = Boolean(body.enabled);
+    const reason = enable ? (typeof body.reason === "string" ? body.reason.trim() : "") : requireText(body.reason, "reason", "سبب الإيقاف", 5);
     const offer = await tx(async (t) => {
       const current = await offerById(t, params.id);
       const old = deriveStatus(current);
@@ -167,8 +200,19 @@ export const offerRoutes = [
         entityId: current.id,
         oldValue: old,
         newValue: status,
-        reason: typeof body.reason === "string" ? body.reason : null,
+        reason: reason || null,
       });
+      if (current.scope !== "platform" && current.businessId) {
+        await pushVendorNotification(
+          t,
+          current.businessId,
+          null,
+          "platform",
+          enable ? "أعادت Wash Up تفعيل عرضك" : "أوقفت Wash Up عرضك",
+          enable ? `العرض «${current.title.ar}» مفعل مجددًا.` : `العرض «${current.title.ar}» موقوف — السبب: ${reason}`,
+          "/offers",
+        );
+      }
       return { ...current, status };
     });
     return ok(offer, enable ? "تم تفعيل العرض" : "تم إيقاف العرض");
