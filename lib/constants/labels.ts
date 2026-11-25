@@ -107,8 +107,8 @@ export const TRANSACTION_STATUS: Record<TransactionStatus, StatusMeta> = {
 };
 
 export const PAYOUT_STATUS: Record<PayoutStatus, StatusMeta> = {
-  due: { label: "مستحقة", tone: TONES.warning },
-  paid: { label: "مدفوعة", tone: TONES.success },
+  due: { label: "مفتوحة", tone: TONES.warning },
+  paid: { label: "محصّلة", tone: TONES.success },
 };
 
 export const OFFER_STATUS: Record<OfferStatus, StatusMeta> = {
@@ -312,7 +312,7 @@ export const AUDIT_ENTITY: Record<string, string> = {
   reviews: "تقييم",
   offers: "عرض",
   transactions: "معاملة",
-  payouts: "دفعة",
+  payouts: "تسوية عمولة",
   settings: "إعدادات",
   admins: "مسؤول",
   roles: "صلاحيات",

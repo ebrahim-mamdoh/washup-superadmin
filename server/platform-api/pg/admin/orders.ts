@@ -161,8 +161,8 @@ export const orderRoutes = [
         where id = ${current.id} and status in ('pending', 'confirmed') returning id`;
       if (!updated.length) throw new MockApiError("يمكن إلغاء الحجوزات بانتظار التأكيد أو المؤكدة فقط", 409);
       await t`insert into public.order_events (order_id, status, actor_type, actor_id) values (${current.id}, 'cancelled', 'admin', ${admin.id})`;
-      // A commission entry that was never settled disappears with the order.
-      await t`delete from public.transactions where order_id = ${current.id} and status = 'pending'`;
+      // The pending ledger row is dropped by the database trigger `order_ledger` on cancel; the panel
+      // never writes ledger rows itself (single writer, GAP-019).
 
       await logAudit(t, {
         actorId: admin.id,

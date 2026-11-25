@@ -11,6 +11,7 @@ import {
   fetchPayouts,
   fetchTransaction,
   fetchTransactions,
+  generateSettlements,
   markPayoutPaid,
   resolveDiscrepancy,
   updateCommission,
@@ -18,6 +19,7 @@ import {
 import type { ListParams } from "@/types/common";
 import type {
   FinancePeriod,
+  GenerateSettlementsPayload,
   MarkPayoutPaidPayload,
   TransactionListParams,
   UpdateCommissionPayload,
@@ -74,6 +76,14 @@ export function usePayouts(params: ListParams & { status?: string; country?: str
     queryKey: queryKeys.payouts(params),
     queryFn: () => fetchPayouts(params),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** GAP-020: builds the settlements of a period. */
+export function useGenerateSettlements(onDone?: () => void) {
+  return useAdminMutation((payload: GenerateSettlementsPayload) => generateSettlements(payload), {
+    invalidate: [queryKeys.financeRoot],
+    onSuccess: () => onDone?.(),
   });
 }
 

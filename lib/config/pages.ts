@@ -25,7 +25,7 @@ export const pagesConfig = {
   "/finance": { title: "الملخص المالي", description: "إجمالي المبيعات والعمولات" },
   "/finance/transactions": { title: "المعاملات", description: "دفتر المعاملات المالية" },
   "/finance/commission": { title: "العمولات", description: "إعدادات عمولة المنصة" },
-  "/finance/payouts": { title: "مدفوعات المغاسل", description: "متابعة مستحقات المغاسل" },
+  "/finance/payouts": { title: "تسويات العمولة", description: "عمولة Wash Up المستحقة على المغاسل وتحصيلها" },
   "/admins": { title: "المسؤولون", description: "حسابات فريق الإدارة" },
   "/roles": { title: "الأدوار والصلاحيات", description: "مصفوفة صلاحيات الأدوار" },
   "/settings": { title: "إعدادات المنصة", description: "الإعدادات العامة والكتالوجات" },

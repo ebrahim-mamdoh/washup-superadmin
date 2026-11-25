@@ -33,3 +33,28 @@ export function zoneDayRanges(days: number, zone: string) {
   });
   return { starts, ends, labels };
 }
+
+/**
+ * Currency the single-series figures (curves, sparks, headline totals) are reported in: the filtered
+ * country's currency, else EGP. Amounts in different currencies are never added together; the
+ * per-currency breakdowns (`moneyByCurrency`, `byCurrency`) list every currency.
+ */
+export async function reportCurrency(q: Q, country = ""): Promise<string> {
+  if (!country || country === "ALL") return DEFAULT_REPORT_CURRENCY;
+  const [row] = await q<{ currency: string | null }[]>`select currency from public.countries where code = ${country}`;
+  return row?.currency || DEFAULT_REPORT_CURRENCY;
+}
+
+export const DEFAULT_REPORT_CURRENCY = "EGP";
+
+/**
+ * Joins (after `public.orders o`) giving each order its ledger row `t` (one per order) and its branch
+ * country's currency `oc`; `ORDER_CURRENCY` is then the order's currency (ledger first).
+ */
+export const ORDER_MONEY_JOIN = `left join public.transactions t on t.order_id = o.id
+  left join lateral (
+    select c2.currency from public.branches b2
+    join public.areas a2 on a2.id = b2.area_id
+    join public.countries c2 on c2.code = a2.country_code
+    where b2.id = o.branch_id) oc on true`;
+export const ORDER_CURRENCY = `coalesce(t.currency, oc.currency, 'EGP')`;

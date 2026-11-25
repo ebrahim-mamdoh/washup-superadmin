@@ -16,6 +16,10 @@ export interface Transaction {
   status: TransactionStatus;
   flag: "discrepancy" | null;
   reviewNote: string | null;
+  /** ISO currency recorded by the ledger (EGP, SAR…). */
+  currency?: string | null;
+  /** Settlement statement this row belongs to (GAP-020). */
+  payoutId?: string | null;
 }
 
 export interface Payment {
@@ -74,6 +78,8 @@ export interface FinanceSeriesPoint {
 
 export interface FinanceOverview {
   period: FinancePeriod;
+  /** Currency of the single-currency fields (headline numbers, series, top washes); other currencies are only in *ByCurrency. */
+  currency?: string;
   gmv: number;
   commission: number;
   netToWashes: number;
@@ -122,6 +128,8 @@ export interface Payout {
   status: PayoutStatus;
   reference: string | null;
   paidAt: string | null;
+  /** ISO currency of the statement (EGP, SAR…). */
+  currency?: string | null;
 }
 
 export interface PayoutListItem extends Payout {
@@ -135,6 +143,13 @@ export type PayoutListMeta = {
   totals: { due: number; paid: number };
   totalsByCurrency?: { symbol: string; decimals: number; due: number; paid: number }[];
 };
+
+export interface GenerateSettlementsPayload {
+  /** YYYY-MM-DD, inclusive. */
+  periodStart: string;
+  periodEnd: string;
+  reason: string;
+}
 
 export interface MarkPayoutPaidPayload {
   /** What is being paid now; the server adds it to the payout under a row lock (GAP-092). */

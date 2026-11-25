@@ -85,6 +85,7 @@ const ROUTE_ACCESS: Record<string, RouteAccess> = {
   "PUT /admin/finance/commission": manage("finance"),
   "GET /admin/finance/payouts": view("finance"),
   "POST /admin/finance/payouts/:id/pay": manage("finance"),
+  "POST /admin/finance/payouts/generate": manage("finance"),
 
   // Admin accounts and the matrix: viewable per the matrix, managed by Super Admin only.
   "GET /admin/admins": view("admins"),

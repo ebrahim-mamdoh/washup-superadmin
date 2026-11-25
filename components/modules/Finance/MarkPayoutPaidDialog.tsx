@@ -27,8 +27,8 @@ function buildSchema(remaining: number) {
       .refine((v) => Number(v) <= remaining, `المبلغ لا يتجاوز المتبقي (${formatMoney(remaining)})`),
     date: z
       .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "اختر تاريخ الدفع")
-      .refine((v) => v <= todayLocal(), "لا يمكن أن يكون تاريخ الدفع في المستقبل"),
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "اختر تاريخ التحصيل")
+      .refine((v) => v <= todayLocal(), "لا يمكن أن يكون تاريخ التحصيل في المستقبل"),
     reference: z.string().trim().min(4, "أدخل مرجع التحويل (4 أحرف على الأقل)"),
   });
 }
@@ -90,10 +90,10 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
               <Wallet className="size-5" />
             </span>
             <div className="space-y-1.5 pt-0.5">
-              <DialogTitle className="text-base font-semibold">تسجيل دفع لـ {payout.businessName.ar}</DialogTitle>
+              <DialogTitle className="text-base font-semibold">تسجيل تحصيل عمولة من {payout.businessName.ar}</DialogTitle>
               <DialogDescription>
-                عن الفترة <span className="num">{formatDate(payout.periodStart)} – {formatDate(payout.periodEnd, { withYear: true })}</span>. السداد
-                الكامل يُسوّي معاملات المغسلة المدفوعة حتى نهاية الفترة.
+                عن الفترة <span className="num">{formatDate(payout.periodStart)} – {formatDate(payout.periodEnd, { withYear: true })}</span>. التحصيل
+                الكامل يُسوّي معاملات هذه التسوية.
               </DialogDescription>
             </div>
           </div>
@@ -101,11 +101,11 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
 
         <dl className="grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-xs">
           <div>
-            <dt className="text-muted-foreground">المستحق</dt>
+            <dt className="text-muted-foreground">العمولة المستحقة</dt>
             <dd className="num mt-0.5 text-sm font-semibold">{money(payout.amountDue)}</dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">مدفوع سابقًا</dt>
+            <dt className="text-muted-foreground">محصّل سابقًا</dt>
             <dd className="num mt-0.5 text-sm font-semibold">{money(payout.amountPaid)}</dd>
           </div>
           <div>
@@ -118,7 +118,7 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label htmlFor="payout-amount" className="text-xs font-medium">
-                المبلغ المدفوع الآن ({payout.currencySymbol ?? "ج.م"})
+                المبلغ المحصّل الآن ({payout.currencySymbol ?? "ج.م"})
               </label>
               <Input
                 id="payout-amount"
@@ -131,13 +131,13 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
                 <p className="text-xs text-destructive">{errors.amount.message}</p>
               ) : (
                 <p className="num text-[11px] text-muted-foreground">
-                  {leftAfter > 0 ? `دفعة جزئية — يتبقى ${money(leftAfter)}` : "سداد كامل للمستحق"}
+                  {leftAfter > 0 ? `تحصيل جزئي — يتبقى ${money(leftAfter)}` : "تحصيل كامل للعمولة المستحقة"}
                 </p>
               )}
             </div>
             <div className="space-y-1.5">
               <label htmlFor="payout-date" className="text-xs font-medium">
-                تاريخ الدفع
+                تاريخ التحصيل
               </label>
               <Input id="payout-date" type="date" max={todayLocal()} aria-invalid={Boolean(errors.date)} className="num h-9" {...register("date")} />
               {errors.date ? <p className="text-xs text-destructive">{errors.date.message}</p> : null}
@@ -162,7 +162,7 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
               إلغاء
             </Button>
             <Button type="submit" loading={markPaid.isPending}>
-              تسجيل الدفع
+              تسجيل التحصيل
             </Button>
           </DialogFooter>
         </form>

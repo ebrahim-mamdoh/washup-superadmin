@@ -5,6 +5,7 @@ import type {
   DiscrepancyDetails,
   FinanceOverview,
   FinancePeriod,
+  GenerateSettlementsPayload,
   MarkPayoutPaidPayload,
   Payout,
   PayoutListItem,
@@ -42,6 +43,11 @@ export function updateCommission(payload: UpdateCommissionPayload) {
 
 export function fetchPayouts(params: ListParams & { status?: string; country?: string }) {
   return getPaginated<PayoutListItem, PayoutListMeta>("/admin/finance/payouts", params, "تعذر تحميل المدفوعات");
+}
+
+/** GAP-020: creates the commission settlements of a period (one per wash and currency). */
+export function generateSettlements(payload: GenerateSettlementsPayload) {
+  return send<{ created: number }>("post", "/admin/finance/payouts/generate", payload);
 }
 
 export function markPayoutPaid(id: string, payload: MarkPayoutPaidPayload) {

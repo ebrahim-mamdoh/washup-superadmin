@@ -18,7 +18,7 @@ import { zoneDateParts, zoneLocalToUtc } from "../../vendor/engine";
 import { ok } from "../../http";
 import { route } from "../router";
 import { type Q, db } from "../sql";
-import { reportZone, zoneDayRanges } from "./report-days";
+import { ORDER_CURRENCY, ORDER_MONEY_JOIN, reportCurrency, reportZone, zoneDayRanges } from "./report-days";
 
 /**
  * Super Admin dashboard on Postgres. Same shape and alert rules as the mock
@@ -49,21 +49,24 @@ interface DayTotals {
  * Per-bucket order totals for [start, end) ranges: bookings, completed,
  * cancelled, paid GMV and platform commission. Commission is the amount RECORDED in the ledger
  * (`transactions.commission`, at the rate of that time — GAP-019), never recomputed with a wash's
- * current rate; a paid order without a ledger row adds no commission.
+ * current rate; a paid order without a ledger row adds no commission. Money (GMV, commission) only
+ * counts orders in `currency` — amounts in different currencies are never added together; the
+ * per-currency totals are in `moneyByCurrency`.
  */
-function orderTotals(q: Q, starts: string[], ends: string[], country = "") {
+function orderTotals(q: Q, starts: string[], ends: string[], currency: string, country = "") {
   const countryOnOrder =
     country && country !== "ALL"
       ? q`exists (select 1 from public.branches br join public.areas ar on ar.id = br.area_id where br.id = o.branch_id and ar.country_code = ${country})`
       : q`true`;
+  const paidIn = q`o.status = 'completed' and o.payment_status = 'paid' and ${q.unsafe(ORDER_CURRENCY)} = ${currency}`;
   return q<DayTotals[]>`
     select (count(o.id) filter (where o.status not in ('cancelled', 'no_show')))::int as created,
            (count(o.id) filter (where o.status = 'completed'))::int as completed,
            (count(o.id) filter (where o.status = 'cancelled'))::int as cancelled,
-           coalesce(sum(o.total) filter (where o.status = 'completed' and o.payment_status = 'paid'), 0) as gmv,
-           coalesce(sum(t.commission) filter (where o.status = 'completed' and o.payment_status = 'paid'), 0) as commission
+           coalesce(sum(o.total) filter (where ${paidIn}), 0) as gmv,
+           coalesce(sum(t.commission) filter (where ${paidIn}), 0) as commission
     from unnest(${starts}::timestamptz[], ${ends}::timestamptz[]) with ordinality as d(s, e, i)
-    left join (public.orders o left join public.transactions t on t.order_id = o.id)
+    left join (public.orders o ${q.unsafe(ORDER_MONEY_JOIN)})
       on o.scheduled_at >= d.s and o.scheduled_at < d.e and ${countryOnOrder}
     group by d.i order by d.i`;
 }
@@ -173,7 +176,7 @@ async function buildFunnel(q: Q, from: string, end: string): Promise<DashboardFu
  * otherwise. Buckets are the zone's wall-clock (the country's, else Cairo), not the
  * server or database session timezone.
  */
-async function buildRevenue(q: Q, period: DashboardPeriod, week: DayTotals[], zone: string, country = ""): Promise<RevenuePoint[]> {
+async function buildRevenue(q: Q, period: DashboardPeriod, week: DayTotals[], zone: string, currency: string, country = ""): Promise<RevenuePoint[]> {
   if (period === "today") {
     const parts = zoneDateParts(now(), zone);
     const hours = Array.from({ length: Math.max(1, parts.hour - 7) }, (_, i) => 8 + i);
@@ -182,7 +185,7 @@ async function buildRevenue(q: Q, period: DashboardPeriod, week: DayTotals[], zo
     const endOfDay = zoneLocalToUtc(zone, parts.y, parts.m, parts.day + 1, 0, 0).toISOString();
     const starts = hours.map((h, i) => (i === 0 ? startOfDay : at(h)));
     const ends = hours.map((h, i) => (i === hours.length - 1 ? endOfDay : at(h + 1)));
-    const rows = await orderTotals(q, starts, ends, country);
+    const rows = await orderTotals(q, starts, ends, currency, country);
     return hours.map((h, i) => ({
       label: `${h % 12 || 12}${h >= 12 ? "م" : "ص"}`,
       gmv: rows[i].gmv,
@@ -192,7 +195,7 @@ async function buildRevenue(q: Q, period: DashboardPeriod, week: DayTotals[], zo
 
   const days = PERIOD_DAYS[period];
   const { labels, starts, ends } = zoneDayRanges(days, zone);
-  const rows = days === week.length ? week : await orderTotals(q, starts, ends, country);
+  const rows = days === week.length ? week : await orderTotals(q, starts, ends, currency, country);
   return labels.map((label, i) => ({
     label,
     gmv: rows[i].gmv,
@@ -337,7 +340,7 @@ export const dashboardRoutes = [
 
     // Day windows are calendar days of the report zone (the country's, else Cairo — GAP-086),
     // computed from the app clock (never current_date in SQL).
-    const zone = await reportZone(sql, country);
+    const [zone, currency] = await Promise.all([reportZone(sql, country), reportCurrency(sql, country)]);
     const week = zoneDayRanges(7, zone);
     const end = week.ends[week.ends.length - 1];
     const firstDay = (days: number) => zoneDayRanges(days, zone).starts[0];
@@ -346,7 +349,7 @@ export const dashboardRoutes = [
     const from30 = firstDay(30);
 
     const [weekTotals, history, [current], funnel, alerts, topWashes, needsAttention] = await Promise.all([
-      orderTotals(sql, week.starts, week.ends, country),
+      orderTotals(sql, week.starts, week.ends, currency, country),
       countsAt(sql, week.ends),
       currentCounts(sql, country),
       buildFunnel(sql, periodFrom, end),
@@ -355,7 +358,7 @@ export const dashboardRoutes = [
       buildAttention(sql, from30, end),
     ]);
     const moneyByCurrency = await sql<{ code: string; symbol: string; decimals: number; gmv: number; commission: number }[]>`
-      select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
+      select c.currency as code, min(c.currency_symbol ->> 'ar') as symbol, max(c.currency_decimals)::int as decimals,
              coalesce(sum(o.total), 0) as gmv,
              coalesce(sum(t.commission), 0) as commission
       from public.orders o
@@ -366,9 +369,9 @@ export const dashboardRoutes = [
       where o.scheduled_at >= ${periodFrom} and o.scheduled_at < ${end}
         and o.status = 'completed' and o.payment_status = 'paid'
         ${country && country !== "ALL" ? sql`and ar.country_code = ${country}` : sql``}
-      group by c.code, c.currency_symbol, c.currency_decimals, c.sort_order
-      order by c.sort_order, c.code`;
-    const revenue = await buildRevenue(sql, period, weekTotals, zone, country);
+      group by c.currency
+      order by min(c.sort_order), c.currency`;
+    const revenue = await buildRevenue(sql, period, weekTotals, zone, currency, country);
     const kpis = buildKpis(weekTotals, history, current);
     const kpi = (k: KpiKey) => kpis.find((x) => x.key === k)?.value ?? 0;
 

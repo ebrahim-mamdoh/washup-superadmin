@@ -10,10 +10,10 @@ import type {
   TransactionStatus,
 } from "@/types/finance";
 import type { Transaction } from "@/types/finance";
-import { daysAgo, isSameDay, logAudit, now, round2 } from "../db";
+import { daysAgo, isSameDay, logAudit, nid, now, round2 } from "../db";
 import { MockApiError, countBy, matchesSearch, ok, paginate, requireText, sortBy } from "../http";
 import { adminName, businessName, findOrThrow } from "../lookups";
-import { payoutIncrement } from "../finance-rules";
+import { payoutIncrement, settlementPeriod } from "../finance-rules";
 import { route } from "../router";
 import { pushVendorNotification } from "../vendor/notify";
 import type { MockDatabase } from "../schema";
@@ -83,6 +83,7 @@ export const financeRoutes = [
 
     const overview: FinanceOverview = {
       period,
+      currency: "EGP",
       gmv,
       commission,
       netToWashes: round2(gmv - commission),
@@ -237,14 +238,46 @@ export const financeRoutes = [
     let settled = 0;
     if (payout.status === "paid") {
       for (const t of db.transactions) {
-        if (t.businessId === payout.businessId && t.status === "paid" && new Date(t.date) <= new Date(payout.periodEnd)) {
+        // Exactly the ledger rows of this statement (GAP-020), not a period-based match.
+        if (t.payoutId === payout.id && t.status === "paid") {
           t.status = "settled";
           settled += 1;
         }
       }
     }
-    logAudit(db, { actorId: admin.id, action: "mark_payout_paid", entity: "payouts", entityId: payout.id, oldValue: "due", newValue: payout.status, reason: `Reference: ${reference} — ${amount} EGP (total paid ${total})${settled ? ` (تسوية ${settled} معاملة)` : ""}` });
-    pushVendorNotification(db, payout.businessId, null, "payout", payout.status === "paid" ? "تم تحويل مستحقاتك" : "تم تحويل دفعة جزئية", `حولت Wash Up ${amount.toLocaleString("en-US")} ج.م — المرجع ${reference}.`, "/finance");
-    return ok(payout, payout.status === "paid" ? "تم تسجيل الدفعة وتسوية المعاملات" : "تم تسجيل دفعة جزئية");
+    const code = payout.currency || "EGP";
+    logAudit(db, { actorId: admin.id, action: "mark_payout_paid", entity: "payouts", entityId: payout.id, oldValue: "due", newValue: payout.status, reason: `Reference: ${reference} — collected ${amount} ${code} (total ${total} of ${payout.amountDue})${settled ? ` (تسوية ${settled} معاملة)` : ""}` });
+    // A settlement is commission the wash owes Wash Up: this records what was collected from it.
+    pushVendorNotification(db, payout.businessId, null, "payout", payout.status === "paid" ? "تمت تسوية عمولة الفترة" : "تم استلام دفعة من عمولة الفترة", `استلمت Wash Up ${amount.toLocaleString("en-US")} ج.م من عمولة الفترة — المرجع ${reference}.`, "/finance");
+    return ok(payout, payout.status === "paid" ? "تم تحصيل العمولة كاملة وتسوية معاملات الفترة" : "تم تسجيل تحصيل جزئي");
+  }),
+
+  // GAP-020: one "due" statement per wash and currency from paid, unlinked ledger rows of the period
+  // (same rule as the database's generate_settlements).
+  route("POST", "/admin/finance/payouts/generate", ({ db, body, admin }) => {
+    const { start, end, reason } = settlementPeriod(body);
+    const from = Date.parse(`${start}T00:00:00.000Z`);
+    const until = Date.parse(`${end}T00:00:00.000Z`) + 86_400_000;
+    const groups = new Map<string, { businessId: string; currency: string; due: number; rows: typeof db.transactions }>();
+    for (const t of db.transactions) {
+      const at = Date.parse(t.date);
+      if (t.status !== "paid" || t.payoutId || at < from || at >= until) continue;
+      const currency = t.currency || "EGP";
+      const key = `${t.businessId}|${currency}`;
+      const g = groups.get(key) ?? { businessId: t.businessId, currency, due: 0, rows: [] };
+      g.due += t.commission;
+      g.rows.push(t);
+      groups.set(key, g);
+    }
+    let created = 0;
+    for (const g of groups.values()) {
+      if (g.due <= 0) continue;
+      const id = nid("po");
+      db.payouts.push({ id, businessId: g.businessId, periodStart: `${start}T00:00:00.000Z`, periodEnd: `${end}T00:00:00.000Z`, amountDue: round2(g.due), amountPaid: 0, status: "due", reference: null, paidAt: null, currency: g.currency });
+      for (const t of g.rows) t.payoutId = id;
+      created += 1;
+    }
+    logAudit(db, { actorId: admin.id, action: "generate_settlements", entity: "payouts", entityId: `${start}..${end}`, newValue: `${created} statements`, reason });
+    return ok({ created }, created ? `تم إنشاء ${created} تسوية للفترة ${start} – ${end}` : "لا توجد معاملات مدفوعة غير مُسوّاة في هذه الفترة");
   }),
 ];

@@ -127,14 +127,14 @@ function MetricGrid({ data, period }: { data: FinanceOverview; period: FinancePe
           hint="لكل حجز مدفوع"
         />
         <FinanceMetricCard
-          label="مستحقات غير مدفوعة"
-          definition="المتبقي للمغاسل في الدفعات المستحقة التي لم تُسدد بعد. رصيد حالي لا يتأثر بالفترة."
+          label="عمولة لم تُحصّل"
+          definition="عمولة Wash Up المتبقية على المغاسل في التسويات المفتوحة. رصيد حالي لا يتأثر بالفترة."
           value={(data.payoutsByCurrency?.length ? data.payoutsByCurrency : [{ symbol: "ج.م", decimals: 2, due: data.pendingPayouts }])
             .map((c) => formatMoney(c.due, { symbol: c.symbol, fractionDigits: c.decimals }))
             .join(" · ")}
           icon={<Wallet />}
           tone="var(--warning)"
-          hint="رصيد حالي · مدفوعات المغاسل"
+          hint="رصيد حالي · تسويات العمولة"
           href="/finance/payouts"
         />
         <FinanceMetricCard

@@ -13,8 +13,8 @@ import type {
 } from "@/types/finance";
 
 import { daysAgo, now, round2 } from "../../db";
-import { payoutIncrement } from "../../finance-rules";
-import { reportZone, zoneDayRanges } from "./report-days";
+import { payoutIncrement, settlementPeriod } from "../../finance-rules";
+import { ORDER_CURRENCY, ORDER_MONEY_JOIN, reportCurrency, reportZone, zoneDayRanges } from "./report-days";
 import { MockApiError, ok, requireText } from "../../http";
 import { PAYOUT_COLS, TRANSACTION_COLS, auditWhere, businessesWhere, payoutsWhere, transactionsWhere } from "../entities";
 import { countsOf, orderBy, paged, searchPattern } from "../list";
@@ -33,9 +33,13 @@ const PERIOD_DAYS: Record<FinancePeriod, number> = { today: 1, "7d": 7, "30d": 3
 const TXN_ITEM = (q: Q) => q`
   select ${q.unsafe(TRANSACTION_COLS)}, coalesce(bz.name, '{"ar":"—","en":"—"}'::jsonb) as "businessName",
          coalesce(o.number, '—') as "orderNumber", o.payment_method as "paymentMethod", p.amount as "collectedAmount",
-         coalesce(c.currency_symbol ->> 'ar', 'ج.م') as "currencySymbol",
-         coalesce(c.currency_decimals, 2)::int as "currencyDecimals"
+         coalesce(cx.symbol, c.currency_symbol ->> 'ar', 'ج.م') as "currencySymbol",
+         coalesce(cx.decimals, c.currency_decimals, 2)::int as "currencyDecimals"
   from public.transactions t
+  -- The row's own currency (recorded by the ledger) wins over its branch country's.
+  left join lateral (
+    select min(cc.currency_symbol ->> 'ar') as symbol, max(cc.currency_decimals) as decimals
+    from public.countries cc where cc.currency = t.currency) cx on true
   left join public.businesses bz on bz.id = t.business_id
   left join public.orders o on o.id = t.order_id
   left join public.branches br on br.id = o.branch_id
@@ -43,16 +47,6 @@ const TXN_ITEM = (q: Q) => q`
   left join public.countries c on c.code = ar.country_code
   left join lateral (
     select p.amount from public.payments p where p.order_id = t.order_id order by p.collected_at, p.id limit 1) p on true`;
-
-/**
- * End of a payout period: the mock settles transactions dated up to the
- * period end instant; the database keeps only the date, so this is the end of
- * that calendar day (local), the same instant for the seeded periods.
- */
-function periodEndBoundary(periodEnd: string): string {
-  const [y, m, d] = periodEnd.slice(0, 10).split("-").map(Number);
-  return new Date(y, m - 1, d + 1).toISOString();
-}
 
 export const financeRoutes = [
   route("GET", "/admin/finance/overview", async ({ query }) => {
@@ -70,7 +64,13 @@ export const financeRoutes = [
         : sql`true`;
     // Commission is what the ledger RECORDED for each order (`transactions.commission`, at the rate of
     // that time — GAP-019), never recomputed with a wash's current rate. No ledger row → no commission.
-    // Pending payouts follow the country filter like every other figure (business located by its first branch).
+    // Amounts in different currencies are never added together: the single-currency figures (headline
+    // fields, curve, top washes) are in the report currency (the country's, else EGP) and the
+    // *ByCurrency lists carry every currency.
+    const currency = await reportCurrency(sql, country);
+    const inCurrency = sql`${sql.unsafe(ORDER_CURRENCY)} = ${currency}`;
+    const paid = sql`o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}`;
+    // Settlements follow the country filter (wash located by its first branch) and carry their currency.
     const payoutInCountry =
       country && country !== "ALL"
         ? sql`and exists (select 1 from public.branches br join public.areas ar on ar.id = br.area_id
@@ -81,68 +81,53 @@ export const financeRoutes = [
       sql<{ gmv: number; commission: number; orders: number }[]>`
         select coalesce(sum(o.total), 0) as gmv, coalesce(sum(t.commission), 0) as commission, count(o.id)::int as orders
         from unnest(${starts}::timestamptz[], ${ends}::timestamptz[]) with ordinality as d(s, e, i)
-        left join (public.orders o left join public.transactions t on t.order_id = o.id)
-          on o.scheduled_at >= d.s and o.scheduled_at < d.e and o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}
+        left join (public.orders o ${sql.unsafe(ORDER_MONEY_JOIN)})
+          on o.scheduled_at >= d.s and o.scheduled_at < d.e and ${paid} and ${inCurrency}
         group by d.i order by d.i`,
       sql<{ refunds: number; pendingPayouts: number; discrepancies: number }[]>`
-        select coalesce((select sum(o.total) from public.orders o
-                         where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.payment_status = 'refunded' and ${countryOnOrder}), 0) as refunds,
-               coalesce((select sum(po.amount_due - po.amount_paid) from public.payouts po where po.status = 'due' ${payoutInCountry}), 0) as "pendingPayouts",
+        select coalesce((select sum(o.total) from public.orders o ${sql.unsafe(ORDER_MONEY_JOIN)}
+                         where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.payment_status = 'refunded'
+                           and ${countryOnOrder} and ${inCurrency}), 0) as refunds,
+               coalesce((select sum(po.amount_due - po.amount_paid) from public.payouts po
+                         where po.status = 'due' and coalesce(po.currency, 'EGP') = ${currency} ${payoutInCountry}), 0) as "pendingPayouts",
                (select count(*)::int from public.transactions where flag = 'discrepancy') as discrepancies`,
       sql<{ id: string; name: FinanceOverview["topWashes"][number]["name"]; gmv: number; commission: number; orders: number }[]>`
         select b.id, b.name, sum(o.total) as gmv, coalesce(sum(t.commission), 0) as commission, count(*)::int as orders
-        from public.orders o join public.businesses b on b.id = o.business_id
-        left join public.transactions t on t.order_id = o.id
-        where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}
+        from public.orders o ${sql.unsafe(ORDER_MONEY_JOIN)}
+        join public.businesses b on b.id = o.business_id
+        where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and ${paid} and ${inCurrency}
         group by b.id
         having sum(o.total) > 0
         order by gmv desc, b.id
         limit 6`,
     ]);
 
-    const [refundsByCurrency, payoutsByCurrency] = await Promise.all([
+    // Symbol/decimals of a currency code (countries sharing a currency share them).
+    const MONEY = `(select min(c.currency_symbol ->> 'ar') from public.countries c where c.currency = w.code) as symbol,
+                   coalesce((select max(c.currency_decimals) from public.countries c where c.currency = w.code), 2)::int as decimals`;
+    const [refundsByCurrency, payoutsByCurrency, byCurrency] = await Promise.all([
       sql<{ code: string; symbol: string; decimals: number; amount: number }[]>`
-        select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
-               coalesce(sum(o.total), 0) as amount
-        from public.orders o
-        join public.branches br on br.id = o.branch_id
-        join public.areas ar on ar.id = br.area_id
-        join public.countries c on c.code = ar.country_code
-        where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.payment_status = 'refunded' and ${countryOnOrder}
-        group by c.code, c.currency_symbol, c.currency_decimals, c.sort_order
-        order by c.sort_order, c.code`,
+        with w as (
+          select ${sql.unsafe(ORDER_CURRENCY)} as code, sum(o.total) as amount
+          from public.orders o ${sql.unsafe(ORDER_MONEY_JOIN)}
+          where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.payment_status = 'refunded' and ${countryOnOrder}
+          group by 1)
+        select w.code, ${sql.unsafe(MONEY)}, w.amount from w order by w.code`,
       sql<{ code: string; symbol: string; decimals: number; due: number }[]>`
-        select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
-               coalesce(sum(po.amount_due - po.amount_paid), 0) as due
-        from public.payouts po
-        join lateral (
-          select ar.country_code
-          from public.branches br
-          join public.areas ar on ar.id = br.area_id
-          where br.business_id = po.business_id
-            ${country && country !== "ALL" ? sql`and ar.country_code = ${country}` : sql``}
-          order by br.id
-          limit 1
-        ) loc on true
-        join public.countries c on c.code = loc.country_code
-        where po.status = 'due'
-        group by c.code, c.currency_symbol, c.currency_decimals, c.sort_order
-        order by c.sort_order, c.code`,
+        with w as (
+          select coalesce(po.currency, 'EGP') as code, sum(po.amount_due - po.amount_paid) as due
+          from public.payouts po
+          where po.status = 'due' ${payoutInCountry}
+          group by 1)
+        select w.code, ${sql.unsafe(MONEY)}, w.due from w order by w.code`,
+      sql<{ code: string; symbol: string; decimals: number; gmv: number; commission: number; orders: number }[]>`
+        with w as (
+          select ${sql.unsafe(ORDER_CURRENCY)} as code, sum(o.total) as gmv, coalesce(sum(t.commission), 0) as commission, count(*)::int as orders
+          from public.orders o ${sql.unsafe(ORDER_MONEY_JOIN)}
+          where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and ${paid}
+          group by 1)
+        select w.code, ${sql.unsafe(MONEY)}, w.gmv, w.commission, w.orders from w order by w.code`,
     ]);
-
-    const byCurrency = await sql<{ code: string; symbol: string; decimals: number; gmv: number; commission: number; orders: number }[]>`
-      select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
-             coalesce(sum(o.total), 0) as gmv,
-             coalesce(sum(t.commission), 0) as commission,
-             count(*)::int as orders
-      from public.orders o
-      left join public.transactions t on t.order_id = o.id
-      join public.branches br on br.id = o.branch_id
-      join public.areas ar on ar.id = br.area_id
-      join public.countries c on c.code = ar.country_code
-      where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}
-      group by c.code, c.currency_symbol, c.currency_decimals
-      order by c.sort_order, c.code`;
 
     const gmv = daily.reduce((s, d) => s + d.gmv, 0);
     const commission = round2(daily.reduce((s, d) => s + d.commission, 0));
@@ -150,6 +135,7 @@ export const financeRoutes = [
 
     const overview: FinanceOverview = {
       period,
+      currency,
       gmv,
       commission,
       netToWashes: round2(gmv - commission),
@@ -388,9 +374,13 @@ export const financeRoutes = [
 
     const base = sql`
       select ${sql.unsafe(PAYOUT_COLS)}, coalesce(bz.name, '{"ar":"—","en":"—"}'::jsonb) as "businessName",
-             coalesce(loc.symbol, 'ج.م') as "currencySymbol", coalesce(loc.decimals, 2)::int as "currencyDecimals"
+             coalesce(cx.symbol, loc.symbol, 'ج.م') as "currencySymbol", coalesce(cx.decimals, loc.decimals, 2)::int as "currencyDecimals"
       from public.payouts po
       left join public.businesses bz on bz.id = po.business_id
+      -- The statement's own currency (GAP-020/011) wins over its wash's first-branch country.
+      left join lateral (
+        select min(cc.currency_symbol ->> 'ar') as symbol, max(cc.currency_decimals) as decimals
+        from public.countries cc where cc.currency = po.currency) cx on true
       left join lateral (
         select c.currency_symbol ->> 'ar' as symbol, c.currency_decimals as decimals, ar.country_code
         from public.branches br
@@ -440,12 +430,10 @@ export const financeRoutes = [
       const reference = requireText(body.reference, "reference", "المرجع", 4);
       const date = typeof body.date === "string" && body.date ? new Date(body.date).toISOString() : now().toISOString();
       const status: Payout["status"] = total >= current.amountDue ? "paid" : "due";
-      const [money] = await t<{ code: string; symbol: string }[]>`
-        select c.code, c.currency_symbol ->> 'ar' as symbol
-        from public.branches br join public.areas ar on ar.id = br.area_id join public.countries c on c.code = ar.country_code
-        where br.business_id = ${current.businessId} order by br.id limit 1`;
-      const code = money?.code ? `${money.code}` : "EGP";
-      const symbol = money?.symbol || "ج.م";
+      const code = current.currency || "EGP";
+      const [money] = await t<{ symbol: string | null }[]>`
+        select min(currency_symbol ->> 'ar') as symbol from public.countries where currency = ${code}`;
+      const symbol = money?.symbol || code;
 
       // Status guard in the WHERE clause: a payout can't be paid twice concurrently.
       const updated = await t`
@@ -453,11 +441,13 @@ export const financeRoutes = [
         where id = ${current.id} and status = 'due' returning id`;
       if (!updated.length) throw new MockApiError("تم سداد هذه الدفعة مسبقًا", 409);
 
+      // Fully collected: exactly the ledger rows of this statement are settled (GAP-020), never a
+      // period-based guess. Only the status changes; the ledger rows themselves are the trigger's.
       let settled = 0;
       if (status === "paid") {
         const rows = await t`
           update public.transactions set status = 'settled'
-          where business_id = ${current.businessId} and status = 'paid' and date < ${periodEndBoundary(current.periodEnd)}
+          where payout_id = ${current.id} and status = 'paid'
           returning id`;
         settled = rows.length;
       }
@@ -468,20 +458,40 @@ export const financeRoutes = [
         entityId: current.id,
         oldValue: "due",
         newValue: status,
-        reason: `Reference: ${reference} — ${amount} ${code} (total paid ${total})${settled ? ` (تسوية ${settled} معاملة)` : ""}`,
+        reason: `Reference: ${reference} — collected ${amount} ${code} (total ${total} of ${current.amountDue})${settled ? ` (تسوية ${settled} معاملة)` : ""}`,
       });
+      // A settlement is commission the wash owes Wash Up: this records what was collected from it.
       await pushVendorNotification(
         t,
         current.businessId,
         null,
         "payout",
-        status === "paid" ? "تم تحويل مستحقاتك" : "تم تحويل دفعة جزئية",
-        `حولت Wash Up ${amount.toLocaleString("en-US")} ${symbol} — المرجع ${reference}.`,
+        status === "paid" ? "تمت تسوية عمولة الفترة" : "تم استلام دفعة من عمولة الفترة",
+        `استلمت Wash Up ${amount.toLocaleString("en-US")} ${symbol} من عمولة الفترة — المرجع ${reference}.${status === "paid" ? "" : ` المتبقي ${round2(current.amountDue - total).toLocaleString("en-US")} ${symbol}.`}`,
         "/finance",
       );
       const [after] = await payoutsWhere(t, t`po.id = ${current.id}`);
       return after;
     });
-    return ok(payout, payout.status === "paid" ? "تم تسجيل الدفعة وتسوية المعاملات" : "تم تسجيل دفعة جزئية");
+    return ok(payout, payout.status === "paid" ? "تم تحصيل العمولة كاملة وتسوية معاملات الفترة" : "تم تسجيل تحصيل جزئي");
+  }),
+
+  // GAP-020: builds the settlement statements of a period (one per wash and currency) from paid,
+  // not-yet-settled ledger rows, in the database (`generate_settlements`, postgres role only).
+  route("POST", "/admin/finance/payouts/generate", async ({ body, admin }) => {
+    const { start, end, reason } = settlementPeriod(body);
+    const count = await tx(async (t) => {
+      const [row] = await t<{ n: number }[]>`select public.generate_settlements(${start}::date, ${end}::date) as n`;
+      await logAudit(t, {
+        actorId: admin.id,
+        action: "generate_settlements",
+        entity: "payouts",
+        entityId: `${start}..${end}`,
+        newValue: `${row.n} statements`,
+        reason,
+      });
+      return row.n;
+    });
+    return ok({ created: count }, count ? `تم إنشاء ${count} تسوية للفترة ${start} – ${end}` : "لا توجد معاملات مدفوعة غير مُسوّاة في هذه الفترة");
   }),
 ];

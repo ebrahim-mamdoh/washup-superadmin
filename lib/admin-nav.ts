@@ -80,7 +80,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/finance", permission: "finance", label: "الملخص المالي", icon: ChartPie },
       { href: "/finance/transactions", permission: "finance", label: "المعاملات", icon: Receipt },
       { href: "/finance/commission", permission: "finance", label: "العمولات", icon: BadgePercent },
-      { href: "/finance/payouts", permission: "finance", label: "مدفوعات المغاسل", icon: Wallet },
+      { href: "/finance/payouts", permission: "finance", label: "تسويات العمولة", icon: Wallet },
       { href: "/offers", permission: "offers", label: "عروض المنصة", icon: Tag },
     ],
   },
