@@ -137,7 +137,10 @@ export type PayoutListMeta = {
 };
 
 export interface MarkPayoutPaidPayload {
-  amountPaid: number;
+  /** What is being paid now; the server adds it to the payout under a row lock (GAP-092). */
+  amount: number;
+  /** The already-paid total this screen showed: a payment from a stale tab is refused (409). */
+  expectedPaid: number;
   reference: string;
   date: string;
 }

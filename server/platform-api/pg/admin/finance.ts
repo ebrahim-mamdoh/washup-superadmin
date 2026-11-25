@@ -13,6 +13,8 @@ import type {
 } from "@/types/finance";
 
 import { daysAgo, now, round2 } from "../../db";
+import { payoutIncrement } from "../../finance-rules";
+import { reportZone, zoneDayRanges } from "./report-days";
 import { MockApiError, ok, requireText } from "../../http";
 import { PAYOUT_COLS, TRANSACTION_COLS, auditWhere, businessesWhere, payoutsWhere, transactionsWhere } from "../entities";
 import { countsOf, orderBy, paged, searchPattern } from "../list";
@@ -42,17 +44,6 @@ const TXN_ITEM = (q: Q) => q`
   left join lateral (
     select p.amount from public.payments p where p.order_id = t.order_id order by p.collected_at, p.id limit 1) p on true`;
 
-/** Local calendar days of the last `days` days (oldest → newest) as [start, end) ISO bounds. */
-function dayRanges(days: number) {
-  const list = Array.from({ length: days }, (_, i) => daysAgo(days - 1 - i));
-  const ends = list.map((d) => {
-    const e = new Date(d);
-    e.setDate(e.getDate() + 1);
-    return e.toISOString();
-  });
-  return { list, starts: list.map((d) => d.toISOString()), ends };
-}
-
 /**
  * End of a payout period: the mock settles transactions dated up to the
  * period end instant; the database keeps only the date, so this is the end of
@@ -68,33 +59,40 @@ export const financeRoutes = [
     const sql = db();
     const raw = query.get("period");
     const period: FinancePeriod = raw === "today" || raw === "7d" ? raw : "30d";
-    const { list, starts, ends } = dayRanges(PERIOD_DAYS[period]);
+    const country = query.get("country")?.trim().toUpperCase() || "";
+    // Calendar days of the country's zone (else Cairo), not the server's (GAP-086).
+    const { labels, starts, ends } = zoneDayRanges(PERIOD_DAYS[period], await reportZone(sql, country));
     const from = starts[0];
     const end = ends[ends.length - 1];
-    const pct = await defaultCommissionPct(sql);
-    const country = query.get("country")?.trim().toUpperCase() || "";
     const countryOnOrder =
       country && country !== "ALL"
         ? sql`exists (select 1 from public.branches br join public.areas ar on ar.id = br.area_id where br.id = o.branch_id and ar.country_code = ${country})`
         : sql`true`;
-    // Commission uses each wash's current rate (override or platform default), like the mock.
-    const rate = sql`coalesce(b.commission_rate, ${pct}::numeric) / 100`;
+    // Commission is what the ledger RECORDED for each order (`transactions.commission`, at the rate of
+    // that time — GAP-019), never recomputed with a wash's current rate. No ledger row → no commission.
+    // Pending payouts follow the country filter like every other figure (business located by its first branch).
+    const payoutInCountry =
+      country && country !== "ALL"
+        ? sql`and exists (select 1 from public.branches br join public.areas ar on ar.id = br.area_id
+                          where br.business_id = po.business_id and ar.country_code = ${country})`
+        : sql``;
 
     const [daily, [range], topWashes] = await Promise.all([
       sql<{ gmv: number; commission: number; orders: number }[]>`
-        select coalesce(sum(o.total), 0) as gmv, coalesce(sum(o.total * ${rate}), 0) as commission, count(o.id)::int as orders
+        select coalesce(sum(o.total), 0) as gmv, coalesce(sum(t.commission), 0) as commission, count(o.id)::int as orders
         from unnest(${starts}::timestamptz[], ${ends}::timestamptz[]) with ordinality as d(s, e, i)
-        left join (public.orders o join public.businesses b on b.id = o.business_id)
+        left join (public.orders o left join public.transactions t on t.order_id = o.id)
           on o.scheduled_at >= d.s and o.scheduled_at < d.e and o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}
         group by d.i order by d.i`,
       sql<{ refunds: number; pendingPayouts: number; discrepancies: number }[]>`
         select coalesce((select sum(o.total) from public.orders o
                          where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.payment_status = 'refunded' and ${countryOnOrder}), 0) as refunds,
-               coalesce((select sum(amount_due - amount_paid) from public.payouts where status = 'due'), 0) as "pendingPayouts",
+               coalesce((select sum(po.amount_due - po.amount_paid) from public.payouts po where po.status = 'due' ${payoutInCountry}), 0) as "pendingPayouts",
                (select count(*)::int from public.transactions where flag = 'discrepancy') as discrepancies`,
       sql<{ id: string; name: FinanceOverview["topWashes"][number]["name"]; gmv: number; commission: number; orders: number }[]>`
-        select b.id, b.name, sum(o.total) as gmv, sum(o.total) * ${rate} as commission, count(*)::int as orders
+        select b.id, b.name, sum(o.total) as gmv, coalesce(sum(t.commission), 0) as commission, count(*)::int as orders
         from public.orders o join public.businesses b on b.id = o.business_id
+        left join public.transactions t on t.order_id = o.id
         where o.scheduled_at >= ${from} and o.scheduled_at < ${end} and o.status = 'completed' and o.payment_status = 'paid' and ${countryOnOrder}
         group by b.id
         having sum(o.total) > 0
@@ -135,10 +133,10 @@ export const financeRoutes = [
     const byCurrency = await sql<{ code: string; symbol: string; decimals: number; gmv: number; commission: number; orders: number }[]>`
       select c.code, c.currency_symbol ->> 'ar' as symbol, c.currency_decimals::int as decimals,
              coalesce(sum(o.total), 0) as gmv,
-             coalesce(sum(o.total * ${rate}), 0) as commission,
+             coalesce(sum(t.commission), 0) as commission,
              count(*)::int as orders
       from public.orders o
-      join public.businesses b on b.id = o.business_id
+      left join public.transactions t on t.order_id = o.id
       join public.branches br on br.id = o.branch_id
       join public.areas ar on ar.id = br.area_id
       join public.countries c on c.code = ar.country_code
@@ -160,9 +158,9 @@ export const financeRoutes = [
       averageOrderValue: paidOrders ? Math.round(gmv / paidOrders) : 0,
       pendingPayouts: range.pendingPayouts,
       discrepancies: range.discrepancies,
-      series: list.map((day, i) => ({
-        label: `${day.getDate()}/${day.getMonth() + 1}`,
-        date: day.toISOString(),
+      series: labels.map((label, i) => ({
+        label,
+        date: starts[i],
         gmv: daily[i].gmv,
         commission: round2(daily[i].commission),
       })),
@@ -316,7 +314,7 @@ export const financeRoutes = [
         id: b.id,
         name: b.name,
         rate: b.commissionRate ?? defaultPct,
-        isOverride: b.commissionRate !== null && b.commissionRate !== defaultPct,
+        isOverride: b.commissionRate !== null,
         gmv30d: b.gmv30d,
         currencySymbol: b.currencySymbol,
         currencyDecimals: b.currencyDecimals,
@@ -442,19 +440,25 @@ export const financeRoutes = [
 
   route("POST", "/admin/finance/payouts/:id/pay", async ({ params, body, admin }) => {
     const payout = await tx(async (t) => {
+      // Row lock: concurrent payments of the same payout are applied one after the other (GAP-092).
+      await t`select 1 from public.payouts where id = ${params.id} for update`;
       const [current] = await payoutsWhere(t, t`po.id = ${params.id}`);
       if (!current) throw new MockApiError("الدفعة غير موجود", 404);
       if (current.status === "paid") throw new MockApiError("تم سداد هذه الدفعة مسبقًا", 409);
-      const amount = Number(body.amountPaid);
-      if (Number.isNaN(amount) || amount <= 0) throw new MockApiError("أدخل مبلغًا صحيحًا", 422);
-      if (amount > current.amountDue) throw new MockApiError("المبلغ أكبر من المستحق", 422);
+      const { amount, total } = payoutIncrement(current, body);
       const reference = requireText(body.reference, "reference", "المرجع", 4);
       const date = typeof body.date === "string" && body.date ? new Date(body.date).toISOString() : now().toISOString();
-      const status: Payout["status"] = amount >= current.amountDue ? "paid" : "due";
+      const status: Payout["status"] = total >= current.amountDue ? "paid" : "due";
+      const [money] = await t<{ code: string; symbol: string }[]>`
+        select c.code, c.currency_symbol ->> 'ar' as symbol
+        from public.branches br join public.areas ar on ar.id = br.area_id join public.countries c on c.code = ar.country_code
+        where br.business_id = ${current.businessId} order by br.id limit 1`;
+      const code = money?.code ? `${money.code}` : "EGP";
+      const symbol = money?.symbol || "ج.م";
 
       // Status guard in the WHERE clause: a payout can't be paid twice concurrently.
       const updated = await t`
-        update public.payouts set amount_paid = ${amount}, reference = ${reference}, paid_at = ${date}, status = ${status}
+        update public.payouts set amount_paid = ${total}, reference = ${reference}, paid_at = ${date}, status = ${status}
         where id = ${current.id} and status = 'due' returning id`;
       if (!updated.length) throw new MockApiError("تم سداد هذه الدفعة مسبقًا", 409);
 
@@ -473,7 +477,7 @@ export const financeRoutes = [
         entityId: current.id,
         oldValue: "due",
         newValue: status,
-        reason: `Reference: ${reference} — ${amount} EGP${settled ? ` (تسوية ${settled} معاملة)` : ""}`,
+        reason: `Reference: ${reference} — ${amount} ${code} (total paid ${total})${settled ? ` (تسوية ${settled} معاملة)` : ""}`,
       });
       await pushVendorNotification(
         t,
@@ -481,7 +485,7 @@ export const financeRoutes = [
         null,
         "payout",
         status === "paid" ? "تم تحويل مستحقاتك" : "تم تحويل دفعة جزئية",
-        `حولت Wash Up ${amount.toLocaleString("en-US")} ج.م — المرجع ${reference}.`,
+        `حولت Wash Up ${amount.toLocaleString("en-US")} ${symbol} — المرجع ${reference}.`,
         "/finance",
       );
       const [after] = await payoutsWhere(t, t`po.id = ${current.id}`);

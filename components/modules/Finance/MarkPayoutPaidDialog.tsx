@@ -42,9 +42,9 @@ type MarkPayoutPaidDialogProps = {
 };
 
 /**
- * AD-39 "Mark as paid": the amount entered is what is being paid now; the
- * total sent to the API is cumulative (already paid + this payment), so a
- * full payment settles the wash's related transactions.
+ * AD-39 "Mark as paid": the amount entered is what is being paid now. The server adds it to
+ * the payout under a row lock and refuses it if another tab recorded a payment meanwhile
+ * (`expectedPaid`, GAP-092); a full payment settles the wash's related transactions.
  */
 export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutPaidDialogProps) {
   const remaining = payout ? Math.max(0, payout.amountDue - payout.amountPaid) : 0;
@@ -70,12 +70,14 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
   const onSubmit = handleSubmit((v) =>
     markPaid.mutate({
       id: payout.id,
-      amountPaid: payout.amountPaid + Number(v.amount),
+      amount: Number(v.amount),
+      expectedPaid: payout.amountPaid,
       reference: v.reference.trim(),
       date: new Date(`${v.date}T12:00:00`).toISOString(),
     }),
   );
 
+  const money = (n: number) => formatMoney(n, { symbol: payout.currencySymbol ?? "ج.م" });
   const validAmount = Number.isFinite(amount) && amount > 0 && amount <= remaining;
   const leftAfter = remaining - (validAmount ? amount : 0);
 
@@ -100,15 +102,15 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
         <dl className="grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-xs">
           <div>
             <dt className="text-muted-foreground">المستحق</dt>
-            <dd className="num mt-0.5 text-sm font-semibold">{formatMoney(payout.amountDue)}</dd>
+            <dd className="num mt-0.5 text-sm font-semibold">{money(payout.amountDue)}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground">مدفوع سابقًا</dt>
-            <dd className="num mt-0.5 text-sm font-semibold">{formatMoney(payout.amountPaid)}</dd>
+            <dd className="num mt-0.5 text-sm font-semibold">{money(payout.amountPaid)}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground">المتبقي</dt>
-            <dd className="num mt-0.5 text-sm font-semibold text-warning">{formatMoney(remaining)}</dd>
+            <dd className="num mt-0.5 text-sm font-semibold text-warning">{money(remaining)}</dd>
           </div>
         </dl>
 
@@ -116,7 +118,7 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label htmlFor="payout-amount" className="text-xs font-medium">
-                المبلغ المدفوع الآن (ج.م)
+                المبلغ المدفوع الآن ({payout.currencySymbol ?? "ج.م"})
               </label>
               <Input
                 id="payout-amount"
@@ -129,7 +131,7 @@ export function MarkPayoutPaidDialog({ payout, open, onOpenChange }: MarkPayoutP
                 <p className="text-xs text-destructive">{errors.amount.message}</p>
               ) : (
                 <p className="num text-[11px] text-muted-foreground">
-                  {leftAfter > 0 ? `دفعة جزئية — يتبقى ${formatMoney(leftAfter)}` : "سداد كامل للمستحق"}
+                  {leftAfter > 0 ? `دفعة جزئية — يتبقى ${money(leftAfter)}` : "سداد كامل للمستحق"}
                 </p>
               )}
             </div>

@@ -13,6 +13,7 @@ import type { Transaction } from "@/types/finance";
 import { daysAgo, isSameDay, logAudit, now, round2 } from "../db";
 import { MockApiError, countBy, matchesSearch, ok, paginate, requireText, sortBy } from "../http";
 import { adminName, businessName, findOrThrow } from "../lookups";
+import { payoutIncrement } from "../finance-rules";
 import { route } from "../router";
 import { pushVendorNotification } from "../vendor/notify";
 import type { MockDatabase } from "../schema";
@@ -46,9 +47,11 @@ export const financeRoutes = [
       return t >= from && t <= end;
     });
     const paid = inRange.filter((o) => o.status === "completed" && o.paymentStatus === "paid");
-    const rate = (bizId: string) => (db.businesses.find((b) => b.id === bizId)?.commissionRate ?? db.defaultCommissionPct) / 100;
+    // Commission RECORDED in the ledger for each order (rate of that time), not the current rate (GAP-019).
+    const recorded = new Map(db.transactions.map((t) => [t.orderId, t.commission]));
+    const commissionOf = (orders: typeof paid) => round2(orders.reduce((s, o) => s + (recorded.get(o.id) ?? 0), 0));
     const gmv = paid.reduce((s, o) => s + o.total, 0);
-    const commission = round2(paid.reduce((s, o) => s + o.total * rate(o.businessId), 0));
+    const commission = commissionOf(paid);
 
     const series = Array.from({ length: days }, (_, i) => {
       const day = daysAgo(days - 1 - i);
@@ -58,7 +61,7 @@ export const financeRoutes = [
         label: `${day.getDate()}/${day.getMonth() + 1}`,
         date: day.toISOString(),
         gmv: dayGmv,
-        commission: round2(dayPaid.reduce((s, o) => s + o.total * rate(o.businessId), 0)),
+        commission: commissionOf(dayPaid),
       };
     });
 
@@ -66,7 +69,7 @@ export const financeRoutes = [
       .map((b) => {
         const orders = paid.filter((o) => o.businessId === b.id);
         const g = orders.reduce((s, o) => s + o.total, 0);
-        return { id: b.id, name: b.name, gmv: g, commission: round2(g * rate(b.id)), orders: orders.length };
+        return { id: b.id, name: b.name, gmv: g, commission: commissionOf(orders), orders: orders.length };
       })
       .filter((w) => w.gmv > 0)
       .sort((a, b) => b.gmv - a.gmv)
@@ -153,7 +156,7 @@ export const financeRoutes = [
           id: b.id,
           name: b.name,
           rate: b.commissionRate ?? db.defaultCommissionPct,
-          isOverride: b.commissionRate !== null && b.commissionRate !== db.defaultCommissionPct,
+          isOverride: b.commissionRate !== null,
           gmv30d: db.orders
             .filter((o) => o.businessId === b.id && o.status === "completed" && o.paymentStatus === "paid" && new Date(o.scheduledAt) >= from)
             .reduce((s, o) => s + o.total, 0),
@@ -217,16 +220,14 @@ export const financeRoutes = [
   route("POST", "/admin/finance/payouts/:id/pay", ({ db, params, body, admin }) => {
     const payout = findOrThrow(db.payouts, params.id, "الدفعة");
     if (payout.status === "paid") throw new MockApiError("تم سداد هذه الدفعة مسبقًا", 409);
-    const amount = Number(body.amountPaid);
-    if (Number.isNaN(amount) || amount <= 0) throw new MockApiError("أدخل مبلغًا صحيحًا", 422);
-    if (amount > payout.amountDue) throw new MockApiError("المبلغ أكبر من المستحق", 422);
+    const { amount, total } = payoutIncrement(payout, body);
     const reference = requireText(body.reference, "reference", "المرجع", 4);
     const date = typeof body.date === "string" && body.date ? new Date(body.date).toISOString() : now().toISOString();
 
-    payout.amountPaid = amount;
+    payout.amountPaid = total;
     payout.reference = reference;
     payout.paidAt = date;
-    payout.status = amount >= payout.amountDue ? "paid" : "due";
+    payout.status = total >= payout.amountDue ? "paid" : "due";
 
     let settled = 0;
     if (payout.status === "paid") {
@@ -237,7 +238,7 @@ export const financeRoutes = [
         }
       }
     }
-    logAudit(db, { actorId: admin.id, action: "mark_payout_paid", entity: "payouts", entityId: payout.id, oldValue: "due", newValue: payout.status, reason: `Reference: ${reference} — ${amount} EGP${settled ? ` (تسوية ${settled} معاملة)` : ""}` });
+    logAudit(db, { actorId: admin.id, action: "mark_payout_paid", entity: "payouts", entityId: payout.id, oldValue: "due", newValue: payout.status, reason: `Reference: ${reference} — ${amount} EGP (total paid ${total})${settled ? ` (تسوية ${settled} معاملة)` : ""}` });
     pushVendorNotification(db, payout.businessId, null, "payout", payout.status === "paid" ? "تم تحويل مستحقاتك" : "تم تحويل دفعة جزئية", `حولت Wash Up ${amount.toLocaleString("en-US")} ج.م — المرجع ${reference}.`, "/finance");
     return ok(payout, payout.status === "paid" ? "تم تسجيل الدفعة وتسوية المعاملات" : "تم تسجيل دفعة جزئية");
   }),

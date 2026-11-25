@@ -30,7 +30,7 @@
 | Item | Detail |
 |------|--------|
 | Product | Back-office for **Carzen** (car-wash marketplace + operating system, Cairo, EGP) |
-| Users | **Super Admin** only (`role: super`); other admin roles are rejected at login |
+| Users | Active admins of every role (`super`, `operations`, `finance`, `support`). Each `/admin/*` route needs a module level from the roles matrix (`server/platform-api/permissions.ts`; unmapped routes = super only); sidebar/pages follow `permissions` from `/admin/auth/me`. Only `super` manages admins and the matrix (GAP-012) |
 | Locale | Arabic, RTL (`<html lang="ar" dir="rtl">`), Western digits, money `180 ج.م`, 12-h times |
 | Stack | Next.js 16.2 App Router · React 19.2 · TypeScript 5 · Tailwind 4 · shadcn/ui **base-nova** (`@base-ui/react`, RTL) · TanStack Query 5 · Zustand 5 · axios · react-hook-form + zod 4 · sonner · lucide-react · next-themes · cmdk (⌘K) · Recharts 3 (lazy) · `server-only` |
 | Mirrors | `D:\Front-projects\aroma` — same versions, folder layout, data-flow rules, `components.json`, eslint/postcss/tsconfig |
