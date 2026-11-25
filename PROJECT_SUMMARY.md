@@ -139,7 +139,7 @@ GMV 48,500 · revenue 3,100) + live deltas (e.g. approving a wash → 88).
 | Complaints | `GET /admin/complaints?status&category&assignee` · `GET /admin/complaints/:id` · `PATCH /admin/complaints/:id {status?,assignedAdminId?,note?,resolution?}` |
 | Reviews | `GET /admin/reviews?filter=all\|low\|reported\|hidden` · `POST /admin/reviews/:id/visibility {hidden,reason,note?}` |
 | Offers | `GET /admin/offers` · `POST /admin/offers` · `PATCH /admin/offers/:id` · `POST /admin/offers/:id/status {enabled,reason?}` |
-| Finance | `GET /admin/finance/overview?period` · `GET /admin/finance/transactions?filter&washId` · `GET …/transactions/:id` · `POST …/transactions/:id/resolve {note}` · `GET/PUT /admin/finance/commission` · `GET /admin/finance/payouts` · `POST …/payouts/:id/pay {amountPaid,reference,date}` (amountPaid = running total) |
+| Finance | `GET /admin/finance/overview?period` · `GET /admin/finance/transactions?filter&washId` · `GET …/transactions/:id` · `POST …/transactions/:id/resolve {note}` · `GET/PUT /admin/finance/commission` · `GET /admin/finance/payouts` (commission SETTLEMENTS the wash owes Wash Up) · `POST …/payouts/generate {periodStart,periodEnd,reason}` · `POST …/payouts/:id/pay {amount,expectedPaid,reference,date}` (amount collected now; full collection settles rows with `payout_id`) |
 | Admins/Roles | `GET/POST /admin/admins` · `PATCH /admin/admins/:id` · `POST …/status {status,reason}` · `GET/PUT /admin/roles {matrix,reason}` |
 | Platform | `GET /admin/settings` · `PUT /admin/settings/:section {value,reason}` · `GET /admin/audit` · `GET /admin/notifications?filter` · `POST …/:id/read` · `POST …/read-all` · `GET /admin/search?q` · `POST /admin/system/reset` |
 
