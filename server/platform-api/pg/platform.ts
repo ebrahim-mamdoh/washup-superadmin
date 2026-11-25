@@ -91,6 +91,23 @@ export async function pushVendorNotification(
   queuePush("vendor", row.id);
 }
 
+/**
+ * The single way a wash's commission rate changes (GAP-089): stores the rate (null = follow the
+ * platform default) and tells the wash, whichever screen changed it (Commission or Edit wash).
+ */
+export async function setCommissionRate(q: Q, businessId: string, next: number | null, effectiveDefault: number): Promise<void> {
+  await q`update public.businesses set commission_rate = ${next} where id = ${businessId}`;
+  await pushVendorNotification(
+    q,
+    businessId,
+    null,
+    "platform",
+    "تحديث نسبة العمولة",
+    `نسبة عمولة Wash Up على مغسلتك أصبحت ${next ?? effectiveDefault}٪ للمعاملات الجديدة.`,
+    "/finance",
+  );
+}
+
 export async function defaultCommissionPct(q: Q): Promise<number> {
   const [row] = await q<{ pct: number | null }[]>`select (value ->> 'defaultPct')::numeric as pct from public.platform_settings where key = 'commission'`;
   return row?.pct ?? 7;

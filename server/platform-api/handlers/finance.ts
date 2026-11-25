@@ -33,6 +33,12 @@ function toTxnItem(db: MockDatabase, t: Transaction): TransactionListItem {
   };
 }
 
+/** The single way a wash's commission rate changes (GAP-089): stores it and tells the wash. */
+export function setCommissionRate(db: MockDatabase, biz: MockDatabase["businesses"][number], next: number | null) {
+  biz.commissionRate = next;
+  pushVendorNotification(db, biz.id, null, "platform", "تحديث نسبة العمولة", `نسبة عمولة Wash Up على مغسلتك أصبحت ${next ?? db.defaultCommissionPct}٪ للمعاملات الجديدة.`, "/finance");
+}
+
 export const financeRoutes = [
   route("GET", "/admin/finance/overview", ({ db, query }) => {
     const raw = query.get("period");
@@ -188,8 +194,7 @@ export const financeRoutes = [
       }
       if (next === biz.commissionRate) continue;
       logAudit(db, { actorId: admin.id, action: "update_commission_override", entity: "businesses", entityId: biz.id, oldValue: biz.commissionRate === null ? "default" : `${biz.commissionRate}%`, newValue: next === null ? "default" : `${next}%`, reason });
-      pushVendorNotification(db, biz.id, null, "platform", "تحديث نسبة العمولة", `نسبة عمولة Wash Up على مغسلتك أصبحت ${next ?? db.defaultCommissionPct}٪ للمعاملات الجديدة.`, "/finance");
-      biz.commissionRate = next;
+      setCommissionRate(db, biz, next);
       changes.push(bizId);
     }
     if (!changes.length) throw new MockApiError("لا توجد تغييرات للحفظ", 422);

@@ -31,7 +31,7 @@ import {
   transactionsWhere,
 } from "../entities";
 import { countsOf, dayBounds, orderBy, paged, searchPattern } from "../list";
-import { defaultCommissionPct, logAudit, pushAdminNotification, pushVendorNotification } from "../platform";
+import { defaultCommissionPct, logAudit, pushAdminNotification, pushVendorNotification, setCommissionRate } from "../platform";
 import { route } from "../router";
 import { type Q, db, tx } from "../sql";
 
@@ -289,7 +289,8 @@ export const washRoutes = [
         if (rate !== null && (Number.isNaN(rate) || rate < 0 || rate > 30)) {
           throw new MockApiError("نسبة العمولة يجب أن تكون بين 0 و 30٪", 422);
         }
-        await t`update public.businesses set commission_rate = ${rate} where id = ${current.id}`;
+        // Same path as the Commission screen: the wash is told about the new rate (GAP-089).
+        if (rate !== current.commissionRate) await setCommissionRate(t, current.id, rate, await defaultCommissionPct(t));
       }
       if (patch.name) {
         const name = { ar: String(patch.name.ar).trim(), en: String(patch.name.en).trim() };

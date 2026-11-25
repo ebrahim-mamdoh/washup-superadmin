@@ -29,6 +29,7 @@ import {
   serviceName,
 } from "../lookups";
 import { route } from "../router";
+import { setCommissionRate } from "./finance";
 import { pushVendorNotification } from "../vendor/notify";
 import type { MockDatabase } from "../schema";
 
@@ -257,7 +258,8 @@ export const washRoutes = [
       if (rate !== null && (Number.isNaN(rate) || rate < 0 || rate > 30)) {
         throw new MockApiError("نسبة العمولة يجب أن تكون بين 0 و 30٪", 422);
       }
-      business.commissionRate = rate;
+      // Same path as the Commission screen: the wash is told about the new rate (GAP-089).
+      if (rate !== business.commissionRate) setCommissionRate(db, business, rate);
     }
 
     logAudit(db, {

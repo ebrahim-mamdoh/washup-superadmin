@@ -19,7 +19,7 @@ import { MockApiError, ok, requireText } from "../../http";
 import { PAYOUT_COLS, TRANSACTION_COLS, auditWhere, businessesWhere, payoutsWhere, transactionsWhere } from "../entities";
 import { countsOf, orderBy, paged, searchPattern } from "../list";
 import { actorNames } from "../lookups";
-import { defaultCommissionPct, logAudit, pushVendorNotification } from "../platform";
+import { defaultCommissionPct, logAudit, pushVendorNotification, setCommissionRate } from "../platform";
 import { route } from "../router";
 import { type Q, db, tx } from "../sql";
 
@@ -371,16 +371,7 @@ export const financeRoutes = [
           newValue: next === null ? "default" : `${next}%`,
           reason,
         });
-        await pushVendorNotification(
-          t,
-          biz.id,
-          null,
-          "platform",
-          "تحديث نسبة العمولة",
-          `نسبة عمولة Wash Up على مغسلتك أصبحت ${next ?? nextDefault}٪ للمعاملات الجديدة.`,
-          "/finance",
-        );
-        await t`update public.businesses set commission_rate = ${next} where id = ${biz.id}`;
+        await setCommissionRate(t, biz.id, next, nextDefault);
         changes.push(bizId);
       }
       // Throwing rolls back the transaction, so nothing above is kept.
