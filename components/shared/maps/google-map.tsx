@@ -209,16 +209,21 @@ function loadOnce(tag: "script" | "link", attr: string, value: string) {
 function OsmLocationPicker({ value, onChange, fallbackCenter, className }: Pick<LocationPickerProps, "value" | "onChange" | "fallbackCenter" | "className">) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     const node = host.current;
     if (!node) return;
+    // Leaflet is loaded from a CDN at runtime and has no bundled types here.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let map: any = null;
     let cancelled = false;
     (async () => {
       await loadOnce("link", "href", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
       await loadOnce("script", "src", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const L = (window as unknown as { L?: any }).L;
       if (cancelled || !L || !host.current) return;
       const center = value ?? fallbackCenter ?? CAIRO;
