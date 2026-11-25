@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 
-import { AUTH_STORE_KEY, useAuthStore } from "@/lib/store/auth-store";
+import { AUTH_STORE_KEY, removeLegacyTokens, useAuthStore } from "@/lib/store/auth-store";
 import { useUIStore } from "@/lib/store/ui-store";
 
 type AuthBootstrapProps = {
@@ -13,12 +13,13 @@ type AuthBootstrapProps = {
 /**
  * Rehydrates persisted Zustand stores after mount (stores use `skipHydration`
  * so server and first client render match), and keeps tabs in sync: signing
- * out in one tab signs out everywhere.
+ * out in one tab signs out everywhere. Tokens an earlier version persisted are deleted (GAP-063).
  */
 export function AuthBootstrap({ children }: AuthBootstrapProps) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    removeLegacyTokens();
     void useAuthStore.persist.rehydrate();
     void useUIStore.persist.rehydrate();
 

@@ -3,66 +3,53 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import type { AdminSession, SessionTokens } from "@/types/auth";
+import type { AdminSession } from "@/types/auth";
 
-export const AUTH_STORE_KEY = "carzen-super-admin-auth-v1";
+/**
+ * Only the non-secret profile (name, role, permissions) and the access expiry are kept here, for
+ * the UI. The tokens live in httpOnly cookies set by the API (GAP-063) and never reach this script.
+ */
+export const AUTH_STORE_KEY = "carzen-super-admin-auth-v2";
+/** Earlier versions persisted the access + refresh tokens under this key; removed on load. */
+export const LEGACY_AUTH_STORE_KEY = "carzen-super-admin-auth-v1";
 
 export type EstablishSessionInput = {
   admin: AdminSession;
-  tokens: SessionTokens;
+  /** Seconds the access cookie stays valid; null/undefined = no expiry. */
+  expiresIn?: number | null;
 };
 
 type AuthState = {
   admin: AdminSession | null;
-  accessToken: string | null;
-  tokenType: string;
-  /** Renews the access token (Supabase tokens last an hour); null when the API has none. */
-  refreshToken: string | null;
-  /** Epoch ms the access token expires at; null = no expiry. */
+  /** Epoch ms the access cookie expires at (renewed shortly before); null = no expiry. */
   expiresAt: number | null;
   /** True once the persisted session has been read from storage. */
   hasHydrated: boolean;
   establishSession: (session: EstablishSessionInput) => void;
-  setTokens: (tokens: SessionTokens) => void;
+  setExpiry: (expiresIn?: number | null) => void;
   setAdmin: (admin: AdminSession) => void;
   clearAuth: () => void;
 };
 
-function tokenState(tokens: SessionTokens) {
-  return {
-    accessToken: tokens.access_token,
-    tokenType: tokens.token_type || "Bearer",
-    refreshToken: tokens.refresh_token ?? null,
-    expiresAt: tokens.expires_in ? Date.now() + tokens.expires_in * 1000 : null,
-  };
-}
+const expiryFrom = (expiresIn?: number | null) => (expiresIn ? Date.now() + expiresIn * 1000 : null);
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       admin: null,
-      accessToken: null,
-      tokenType: "Bearer",
-      refreshToken: null,
       expiresAt: null,
       hasHydrated: false,
-      establishSession: ({ admin, tokens }) => set({ admin, ...tokenState(tokens) }),
-      setTokens: (tokens) => set(tokenState(tokens)),
+      establishSession: ({ admin, expiresIn }) => set({ admin, expiresAt: expiryFrom(expiresIn) }),
+      setExpiry: (expiresIn) => set({ expiresAt: expiryFrom(expiresIn) }),
       setAdmin: (admin) => set({ admin }),
-      clearAuth: () => set({ admin: null, accessToken: null, tokenType: "Bearer", refreshToken: null, expiresAt: null }),
+      clearAuth: () => set({ admin: null, expiresAt: null }),
     }),
     {
       name: AUTH_STORE_KEY,
       storage: createJSONStorage(() => localStorage),
       // Rehydrated manually after mount (AuthBootstrap) to avoid SSR mismatches.
       skipHydration: true,
-      partialize: (state) => ({
-        admin: state.admin,
-        accessToken: state.accessToken,
-        tokenType: state.tokenType,
-        refreshToken: state.refreshToken,
-        expiresAt: state.expiresAt,
-      }),
+      partialize: (state) => ({ admin: state.admin, expiresAt: state.expiresAt }),
       onRehydrateStorage: () => () => {
         useAuthStore.setState({ hasHydrated: true });
       },
@@ -70,10 +57,11 @@ export const useAuthStore = create<AuthState>()(
   ),
 );
 
-export function getAuthAccessToken(): string | null {
-  return useAuthStore.getState().accessToken;
-}
-
-export function getAuthTokenType(): string {
-  return useAuthStore.getState().tokenType || "Bearer";
+/** Deletes tokens a previous version left in localStorage (GAP-063). */
+export function removeLegacyTokens() {
+  try {
+    localStorage.removeItem(LEGACY_AUTH_STORE_KEY);
+  } catch {
+    // Storage blocked: nothing was persisted there either.
+  }
 }

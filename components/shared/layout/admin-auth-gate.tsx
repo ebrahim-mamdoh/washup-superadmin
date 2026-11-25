@@ -7,16 +7,16 @@ import { BrandLogo } from "@/components/shared/brand-logo";
 import { useAuthReady, useMe } from "@/hooks/use-auth";
 
 /**
- * Client-side gate (same model as aroma's DashboardAuthGate): the Bearer token
- * lives in the persisted Zustand store, so we wait for rehydration, then either
- * render the panel or send the visitor to /login with a return path.
+ * Second line behind `proxy.ts` (which redirects page requests without a session cookie): waits for
+ * the persisted profile, then either renders the panel or sends the visitor to /login with a return
+ * path. The session is an httpOnly cookie (GAP-063); `useMe` validates it and a 401 clears the profile.
  */
 export function AdminAuthGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { isReady, isAuthenticated } = useAuthReady();
 
-  // Validates the persisted token once per session; a 401 clears it.
+  // Validates the session cookie once per session; a 401 (after one renewal attempt) clears it.
   useMe(isAuthenticated);
 
   useEffect(() => {

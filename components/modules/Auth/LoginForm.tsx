@@ -8,7 +8,7 @@ import { z } from "zod";
 import { AlertCircle, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useAuthReady, useLogin } from "@/hooks/use-auth";
+import { useAuthReady, useLogin, useMe } from "@/hooks/use-auth";
 import { resolveUserFacingError } from "@/lib/api/api-error-handler";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,10 @@ export default function LoginForm() {
   const next = safeNext(searchParams.get("next"));
   const { isAuthenticated } = useAuthReady();
   const login = useLogin();
+  // A remembered profile only skips the form once the session cookie is confirmed: if the cookie
+  // is gone (proxy.ts sent us here), /me fails, the profile is cleared and the form stays (GAP-063).
+  const me = useMe(isAuthenticated && !login.isSuccess);
+  const sessionLive = isAuthenticated && (login.isSuccess || me.isSuccess);
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -49,8 +53,8 @@ export default function LoginForm() {
   });
 
   useEffect(() => {
-    if (isAuthenticated) router.replace(next);
-  }, [isAuthenticated, next, router]);
+    if (sessionLive) router.replace(next);
+  }, [sessionLive, next, router]);
 
   const onSubmit = handleSubmit((values) => login.mutate(values));
   const serverError = login.error ? resolveUserFacingError(login.error, "تعذر تسجيل الدخول") : null;

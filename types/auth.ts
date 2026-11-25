@@ -37,6 +37,7 @@ export interface SessionTokens {
   expires_in?: number | null;
 }
 
-export interface LoginResponse extends SessionTokens {
+/** Login response; for the web client (`X-Washup-Client: web`) the tokens are cookies, not body fields (GAP-063). */
+export interface LoginResponse extends Partial<SessionTokens> {
   admin: AdminSession;
 }

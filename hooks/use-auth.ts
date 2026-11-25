@@ -8,14 +8,16 @@ import { disablePush } from "@/lib/push/web-push";
 import { useAuthStore } from "@/lib/store/auth-store";
 import type { LoginPayload } from "@/types/auth";
 
-/** `isReady` = persisted session read; `isAuthenticated` = token + admin present. */
+/**
+ * `isReady` = persisted profile read; `isAuthenticated` = a signed-in profile is present. The session
+ * itself is an httpOnly cookie (GAP-063): `useMe` checks it with the API, and a 401 clears the profile.
+ */
 export function useAuthReady() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
-  const accessToken = useAuthStore((s) => s.accessToken);
   const admin = useAuthStore((s) => s.admin);
   return {
     isReady: hasHydrated,
-    isAuthenticated: hasHydrated && Boolean(accessToken) && admin !== null,
+    isAuthenticated: hasHydrated && admin !== null,
     admin,
   };
 }
@@ -29,7 +31,7 @@ export function useLogin() {
     meta: { skipErrorToast: true },
     onSuccess: ({ data }) => {
       queryClient.clear();
-      establishSession({ admin: data.admin, tokens: data });
+      establishSession({ admin: data.admin, expiresIn: data.expires_in });
     },
   });
 }

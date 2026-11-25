@@ -72,7 +72,7 @@ components/
   modules/<Feature>/         # feature UI (§5)
 hooks/                       # React Query hooks per domain + utilities
 lib/
-  axios.ts                   # apiClient (Bearer, envelope check, 401 → clearAuth, X-Demo-Now → setServerNow)
+  axios.ts                   # apiClient (cookie session + X-Washup-Client: web, envelope check, 401 → one refresh → clearAuth, X-Demo-Now → setServerNow)
   api/request.ts             # getData / getPaginated / send + cleanParams; MutationResult
   api/api-error-handler.ts   # copied from aroma (throwApiError, resolveUserFacingError…)
   config/api-base-url.ts     # NEXT_PUBLIC_API_URL or "/api/v1"
@@ -80,7 +80,7 @@ lib/
   admin-nav.ts               # sidebar groups/items, isNavActive
   query-keys.ts              # centralized query keys (each domain has *Root)
   cache/ttl.ts               # CACHE_TTL_LIVE 15s / DYNAMIC 30s / REFERENCE 5m
-  store/auth-store.ts        # admin + token (persisted, skipHydration, hasHydrated flag)
+  store/auth-store.ts        # admin profile + expiry only (persisted, skipHydration, hasHydrated flag); tokens are httpOnly cookies
   store/ui-store.ts          # sidebarCollapsed (persisted), mobileNavOpen, commandOpen
   services/*.service.ts      # one per domain
 types/react-query.d.ts       # mutation meta typing
@@ -201,7 +201,7 @@ commission 0–30%; offer percent ≤ 50%; hiding a review recomputes ratings.
 
 1. **Data flow:** endpoint → `types/` → mock handler → `lib/services/*.service.ts` (via `getData/getPaginated/send`) → `hooks/use-*.ts` → module → thin page. Add new keys to `lib/query-keys.ts`.
 2. **Pages:** `export const metadata = getStaticPageMetadata("<key>")` (add keys to `lib/config/pages.ts`); dynamic routes `await params` (Next 16: `params` is a Promise); wrap components that use `useUrlState`/`useSearchParams` in `<Suspense>`.
-3. **Auth:** client-side gate (`AdminAuthGate`) like aroma's `DashboardAuthGate`; persisted stores use `skipHydration` and are rehydrated in `AuthBootstrap`. Panel content therefore renders client-side only — reading `localStorage` in a lazy `useState` initializer is safe there.
+3. **Auth (GAP-063):** the API route (`server/web-session.ts`) moves login/refresh tokens into httpOnly SameSite=Strict cookies (`washup_sa_access` / `washup_sa_refresh`) for requests with `X-Washup-Client: web` and accepts the cookie only with that header; `proxy.ts` redirects cookie-less page requests to `/login?next=` and sets a per-request nonce CSP (root layout reads `x-nonce`, so every page renders per request). Client-side gate (`AdminAuthGate`) stays as the second line; persisted stores use `skipHydration` and are rehydrated in `AuthBootstrap`. Panel content therefore renders client-side only — reading `localStorage` in a lazy `useState` initializer is safe there.
 4. **base-ui (not Radix):** use `render={<Link href="…" />}` instead of `asChild`. Our `Button` sets `nativeButton={false}` automatically when `render` is passed (otherwise Base UI logs an error). `TooltipTrigger render={<div/>}` around links.
 5. **Button** has a `loading` prop (spinner + disabled). Base sizes are compact (`h-8`); page-level actions use `size="lg"`.
 6. **shadcn CLI quirk:** `npx shadcn add` wrote `from "cn"` and installed a bogus `cn` package — fix imports to `@/lib/utils` and uninstall `cn` after adding components.

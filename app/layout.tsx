@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { IBM_Plex_Sans_Arabic, Plus_Jakarta_Sans } from "next/font/google";
 
 import { AppProviders } from "@/components/providers/app-providers";
@@ -38,11 +39,15 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Per-request CSP nonce from proxy.ts (GAP-063). Reading it renders every page per request, which a
+  // nonce requires; next-themes needs it for its inline no-flash theme script.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="ar"
@@ -51,7 +56,7 @@ export default function RootLayout({
       className={`${plexArabic.variable} ${jakarta.variable} h-full`}
     >
       <body className="min-h-full bg-background font-sans text-foreground">
-        <AppProviders>{children}</AppProviders>
+        <AppProviders nonce={nonce}>{children}</AppProviders>
       </body>
     </html>
   );
