@@ -54,6 +54,11 @@ npm run check:shared   # drift of the code duplicated with ../vendor (§11); exi
 - Env (`.env.example`): `NEXT_PUBLIC_API_URL` (empty = mock API), `MOCK_API_LATENCY` (ms, default 280, 0 = off).
 - Reset data: user menu → "إعادة ضبط بيانات العرض" → `POST /admin/system/reset` (keeps open sessions).
 
+**CI** (`.github/workflows/ci.yml`, GAP-055) runs on every pull request and on pushes to `main` / `ebrahim`
+(Node 24): `npm ci` → `npm run typecheck` → `npx eslint .` → `npm run build` (mock data source, no secrets). A second
+job runs `npm run check:shared` with the partner portal checked out at `../vendor`; it needs the repository secret
+**`SHARED_REPO_TOKEN`** (read-only fine-grained PAT, Contents: Read on `washup-vendor`) and skips (passes) without it.
+
 ## 3. Folder structure
 
 ```
