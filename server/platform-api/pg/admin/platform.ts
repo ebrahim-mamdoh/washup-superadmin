@@ -219,7 +219,7 @@ export const platformRoutes = [
 
   // ── Notifications ─────────────────────────────────────────
   // Each admin sees only the types of modules they can open (GAP-012). Read state is per admin once
-  // `admin_notification_reads` exists (GAP-095, docs/db/…_admin_notification_reads.sql); until then
+  // `admin_notification_reads` exists (GAP-095; live since 2026-11-26, in the schema baseline of the customer-app repo); until then
   // it falls back to the shared `read` column.
   route("GET", "/admin/notifications", async ({ query, admin }) => {
     const sql = db();
