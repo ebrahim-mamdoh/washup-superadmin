@@ -3,8 +3,8 @@ import "server-only";
 import { MockApiError } from "../http";
 
 /*
- * Cancellation reasons shown to customers. Carved out of the partner portal's
- * `vendor/engine.ts` (`npm run check:shared` compares them).
+ * Cancellation reasons shown to customers (order engine of both apps). Byte-identical in the
+ * Super Admin and the partner portal (`npm run check:shared`, GAP-054).
  */
 
 /** Keys the customer app would otherwise show raw. Stored text is a sentence in Arabic and English. */

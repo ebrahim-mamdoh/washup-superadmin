@@ -5,9 +5,9 @@ import { nid, now } from "../db";
 import type { MockDatabase, VendorBusinessSettings } from "../schema";
 
 /*
- * Wash-inbox notifications on the mock store, raised by admin actions (suspension,
- * approval, settlements, moderation…). The partner portal keeps the same functions in
- * `vendor/notify.ts`: keep both identical (`npm run check:shared`).
+ * Wash-inbox notifications on the mock store, raised by the partner portal and by admin actions
+ * (suspension, approval, settlements, moderation…). Shared by both apps: this file is byte-identical
+ * in the Super Admin and the partner portal (`npm run check:shared`, GAP-054).
  */
 
 export const DEFAULT_NOTIFICATION_PREFS: Record<VendorNotificationType, boolean> = {

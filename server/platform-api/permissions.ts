@@ -6,6 +6,7 @@ import type { AdminNotificationType } from "@/types/notifications";
 import type { SearchResultGroup } from "@/types/search";
 
 import { DEFAULT_ROLES_MATRIX } from "./seed";
+import { NOTIFICATION_MODULE } from "./shared/notification-module";
 
 /**
  * Admin route permissions (GAP-012). Every `/admin/*` route is mapped to a module
@@ -138,16 +139,8 @@ export function canAccess(role: AdminRole, permissions: AdminPermissions, access
 
 export const FORBIDDEN = "ليست لديك صلاحية لهذا الإجراء";
 
-/** Module an admin notification belongs to (null: everyone with the notifications permission sees it). */
-export const NOTIFICATION_MODULE: Record<AdminNotificationType, PermissionKey | null> = {
-  application: "applications",
-  complaint: "complaints",
-  critical_review: "reviews",
-  payment_issue: "finance",
-  finance_flag: "finance",
-  unusual_activity: null,
-  system: null,
-};
+// Module an admin notification belongs to: `./shared/notification-module` (shared with the partner portal's push).
+export { NOTIFICATION_MODULE };
 
 /** Notification types this admin may see (all for super). */
 export function visibleNotificationTypes(permissions: AdminPermissions): AdminNotificationType[] {

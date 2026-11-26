@@ -1,12 +1,12 @@
 import "server-only";
 
 /**
- * Wall-clock helpers in a branch timezone (wash hours are local time, not the server's TZ).
- * Carved out of the partner portal's `vendor/engine.ts`, which keeps the same functions:
- * keep both copies identical (`npm run check:shared`).
+ * Wall-clock helpers in a branch timezone (wash hours are local time, not the server TZ).
+ * Byte-identical in the Super Admin and the partner portal (`npm run check:shared`, GAP-054).
  */
 
-const CAIRO = "Africa/Cairo";
+/** Default zone: the mock store and branches without a country. */
+export const CAIRO = "Africa/Cairo";
 
 /** Calendar / clock parts in a branch timezone (wash hours are wall-clock, not the server TZ). */
 export function zoneDateParts(d: Date, timeZone = CAIRO): { y: number; m: number; day: number; weekday: number; hour: number; minute: number } {

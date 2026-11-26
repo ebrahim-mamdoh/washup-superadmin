@@ -2,22 +2,23 @@
 /**
  * Shared-code drift check (GAP-054).
  *
- * The Super Admin and the partner portal (`washup-vendor`) still carry copies of the same
- * core: UI kit, lib helpers, API contracts (`types/`) and the admin-agnostic parts of
- * `server/platform-api/`. Until that core becomes one package, every change to it must be
- * made in BOTH repos. This script lists what has drifted apart.
+ * The Super Admin (`washup-superadmin`) and the partner portal (`washup-vendor`) still carry copies
+ * of the same core: UI kit, lib helpers, API contracts (`types/`) and the namespace-agnostic parts of
+ * `server/platform-api/` (each app serves only its own namespace). Until that core becomes one
+ * package, every change to it must be made in BOTH repos. This script lists what has drifted apart.
+ * It is itself shared: the same file lives in both repos.
  *
  *   node scripts/shared-drift.mjs [siblingRepo] [--verbose]
- *   npm run check:shared                      # sibling defaults to ../vendor
+ *   npm run check:shared        # sibling: ../vendor from the Super Admin, ../super-admin from the portal
  *
  * Exit code: 0 = no drift, 1 = drift found, 2 = sibling repo not found.
  *
  * Two kinds of entries:
  * - FILES: must be byte-identical (line endings ignored).
- * - SYMBOLS: only some top-level declarations are shared (a file that also holds app-only
- *   code, or helpers this repo moved to `server/platform-api/shared/`). Each named
- *   declaration is compared on its own (leading comments and trailing spaces ignored);
- *   `symbols: "common"` compares every top-level declaration that exists in both files.
+ * - SYMBOLS: files that also hold app-only code. Each named declaration is compared on its own
+ *   (leading comments and trailing spaces ignored); `symbols: "common"` compares every top-level
+ *   declaration that exists in both files. App-specific behaviour belongs in an app-only file or
+ *   declaration, never in a differing copy of a shared one.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -67,40 +68,39 @@ export const FILES = [
   "lib/firebase/analytics.ts",
   "lib/firebase/client.ts",
   "lib/firebase/config.ts",
+  "scripts/shared-drift.mjs",
   "styles/theme.css",
   ...TYPES,
   "types/react-query.d.ts",
   // Mock store: both apps read and write the same `.carzen/platform-db.json`.
   "server/platform-api/db.ts",
+  "server/platform-api/schema.ts",
   "server/platform-api/seed.ts",
   "server/platform-api/http.ts",
   "server/platform-api/lookups.ts",
+  "server/platform-api/throttle.ts",
+  // Helpers both namespaces use (GAP-054: moved out of the deleted dead namespaces).
+  ...["cancel-reason", "geo", "notification-module", "notify", "phone", "time"].map((n) => `server/platform-api/shared/${n}.ts`),
+  // Postgres plumbing and entity mappers (one database for both apps).
   "server/platform-api/pg/sql.ts",
   "server/platform-api/pg/list.ts",
   "server/platform-api/pg/fcm.ts",
+  "server/platform-api/pg/entities.ts",
+  "server/platform-api/pg/push.ts",
 ];
 
 /** Declaration-level comparisons. `there` may list several files (first one holding the symbol wins). */
 export const SYMBOLS = [
-  // Helpers this repo moved out of the (deleted) vendor namespace.
-  { here: "server/platform-api/shared/notify.ts", there: "server/platform-api/vendor/notify.ts", symbols: ["DEFAULT_NOTIFICATION_PREFS", "vendorSettingsFor", "pushVendorNotification"] },
-  { here: "server/platform-api/shared/time.ts", there: "server/platform-api/vendor/engine.ts", symbols: ["CAIRO", "zoneDateParts", "zoneLocalToUtc"] },
-  { here: "server/platform-api/shared/cancel-reason.ts", there: "server/platform-api/vendor/engine.ts", symbols: ["CANCEL_REASON_TEXT", "MACHINE_KEY", "readableCancelReason"] },
-  { here: "server/platform-api/shared/phone.ts", there: ["server/platform-api/vendor/engine.ts", "server/platform-api/phone.ts"], symbols: ["nationalPhone", "prettyPhone"] },
   // Vendor record types kept for the mock store / wash inbox.
   { here: "types/vendor/catalog.ts", symbols: "common" },
   { here: "types/vendor/insights.ts", symbols: "common" },
   { here: "types/vendor/team.ts", symbols: "common" },
   // Files that also hold app-specific code: their common declarations must match.
   { here: "lib/constants/labels.ts", symbols: "common" },
-  { here: "server/platform-api/schema.ts", symbols: "common" },
   { here: "server/platform-api/router.ts", symbols: "common" },
-  { here: "server/platform-api/throttle.ts", symbols: "common" },
   { here: "server/platform-api/pg/auth.ts", symbols: "common" },
-  { here: "server/platform-api/pg/entities.ts", symbols: "common" },
   { here: "server/platform-api/pg/lookups.ts", symbols: "common" },
   { here: "server/platform-api/pg/platform.ts", symbols: "common" },
-  { here: "server/platform-api/pg/push.ts", symbols: "common" },
   { here: "server/platform-api/pg/router.ts", symbols: "common" },
 ];
 
@@ -150,7 +150,8 @@ function main() {
   const args = process.argv.slice(2);
   const verbose = args.includes("--verbose");
   const siblingArg = args.find((a) => !a.startsWith("--"));
-  const sibling = path.resolve(ROOT, siblingArg ?? "../vendor");
+  const ownName = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")).name;
+  const sibling = path.resolve(ROOT, siblingArg ?? (ownName === "carzen-super-admin" ? "../vendor" : "../super-admin"));
   if (!existsSync(path.join(sibling, "package.json"))) {
     console.error(`shared-drift: sibling repo not found at ${sibling}`);
     process.exit(2);

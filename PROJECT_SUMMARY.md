@@ -93,9 +93,9 @@ types/                          # domain + API types (admin); types/vendor/{cata
 components/ui/*                 # shadcn base-nova primitives (see §8)
 components/shared/*             # building blocks (§6) + brand-logo, theme-toggle
 lib/{format,export-csv,utils,constants/labels} · hooks/* · styles/theme.css
-server/platform-api/            # server-only API (§4), admin namespace only; shared/ = helpers admin code needs
-                                # that used to live in the partner portal's vendor engine (notify, time, phone,
-                                # cancel-reason)
+server/platform-api/            # server-only API (§4), admin namespace only; shared/ = helpers both apps use
+                                # (notify, time, phone, cancel-reason, geo, notification-module), byte-identical
+                                # with the partner portal
 scripts/shared-drift.mjs        # `npm run check:shared` — drift check against ../vendor (§11)
 ```
 
@@ -108,10 +108,12 @@ scripts/shared-drift.mjs        # `npm run check:shared` — drift check against
 - `index.ts` route table + dispatcher: answers `/admin/*` only (anything else → 404), matches
   `method + /path/:param`, simulates latency, checks Bearer token (`db.sessions[token] → adminId`),
   converts `MockApiError` to `{status:false}`. `pg/index.ts` is the same for Postgres (`pg/admin/*`).
-- `shared/`: `notify.ts` (`pushVendorNotification`, `vendorSettingsFor`, `DEFAULT_NOTIFICATION_PREFS` —
-  admin actions drop notices in the wash inbox), `time.ts` (`zoneDateParts`, `zoneLocalToUtc`),
-  `phone.ts` (`nationalPhone`, `prettyPhone`), `cancel-reason.ts` (`readableCancelReason`). Same
-  declarations as the partner portal's `vendor/{notify,engine}.ts` (checked by `npm run check:shared`).
+- `shared/` (same files in the partner portal, checked by `npm run check:shared`): `notify.ts`
+  (`pushVendorNotification`, `vendorSettingsFor`, `DEFAULT_NOTIFICATION_PREFS` — admin actions drop notices in the
+  wash inbox), `time.ts` (`CAIRO`, `zoneDateParts`, `zoneLocalToUtc`), `phone.ts` (multi-country E.164 helpers of
+  GAP-013: `toE164`, `parsePhone`, `isValidPhone`, `dialOf`, `nationalPhone`, `prettyPhone` — `+966 50 123 4567`
+  outside Egypt), `cancel-reason.ts` (`readableCancelReason`), `geo.ts` (`isLegacyDefaultPin`),
+  `notification-module.ts` (`NOTIFICATION_MODULE`, re-exported by `permissions.ts`; push delivery uses it).
   The mock store (`schema.ts`/`seed.ts`) still holds the partner data (`vendorSessions`,
   `vendorNotifications`, `dayClosings`…) because both apps share `.carzen/platform-db.json`.
 - `db.ts`: DB cached on `globalThis` **and persisted to `<repo>/.carzen/platform-db.json`** (override
@@ -245,9 +247,11 @@ commission 0–30%; offer percent ≤ 50%; hiding a review recomputes ratings.
 
 The partner portal (`../vendor`, repo `washup-vendor`) carries its own copy of the core below. Until it
 becomes one package, **a change to any of these files must be made in both repos**, then
-`npm run check:shared` (or `node scripts/shared-drift.mjs <path-to-vendor>`) must report no drift.
-The authoritative list is `FILES` / `SYMBOLS` in `scripts/shared-drift.mjs`; update it when a file
-joins or leaves the shared core.
+`npm run check:shared` (or `node scripts/shared-drift.mjs <path-to-vendor>`) must report no drift; the portal has
+the same script (`npm run check:shared` there compares against `../super-admin`). The authoritative list is
+`FILES` / `SYMBOLS` in `scripts/shared-drift.mjs` (itself a shared file); update it in both repos when a file
+joins or leaves the shared core. Each app serves only its own namespace: the portal's dead admin copy was deleted
+too (2026-11-26).
 
 - **Byte-identical files:** `components/ui/*` (26 primitives); `components/shared/*` building blocks
   (all except `country-filter.tsx` and `layout/*`), `components/shared/layout/push-toggle.tsx`,
@@ -255,21 +259,25 @@ joins or leaves the shared core.
   `hooks/use-{debounced-value,url-state,web-push}.ts`; `lib/{utils,format,export-csv}.ts`,
   `lib/api/{request,api-error-handler}.ts`, `lib/cache/ttl.ts`, `lib/config/api-base-url.ts`,
   `lib/firebase/*`; `styles/theme.css`; every `types/*.ts` contract (+ `react-query.d.ts`);
-  `server/platform-api/{db,seed,http,lookups}.ts` (one mock store file for both apps) and
-  `server/platform-api/pg/{sql,list,fcm}.ts`.
-- **Same declarations (rest of the file is app-specific):** `server/platform-api/shared/*` against the
-  portal's `vendor/{notify,engine}.ts` / `phone.ts`; `types/vendor/{catalog,insights,team}.ts`;
-  every declaration both repos have in `lib/constants/labels.ts`, `server/platform-api/{schema,router,throttle}.ts`
-  and `server/platform-api/pg/{auth,entities,lookups,platform,push,router}.ts`.
+  `scripts/shared-drift.mjs`; `server/platform-api/{db,schema,seed,http,lookups,throttle}.ts` (one mock store file
+  for both apps), `server/platform-api/shared/*` and `server/platform-api/pg/{sql,list,fcm,entities,push}.ts`.
+- **Same declarations (rest of the file is app-specific):** `types/vendor/{catalog,insights,team}.ts`;
+  every declaration both repos have in `lib/constants/labels.ts`, `server/platform-api/router.ts` and
+  `server/platform-api/pg/{auth,lookups,platform,router}.ts`. An app may add its own declarations there (the
+  portal's `VENDOR_PAYOUT_STATUS`: the wash's wording «مستحقة / مدفوعة» of a settlement); one both have must match.
 - **App-specific (not checked):** dispatchers (`index.ts`, `pg/index.ts`), admin handlers
   (`handlers/*`, `pg/admin/*`), `permissions.ts`, `server/web-session.ts`, `lib/axios.ts`, stores,
-  services, hooks per domain, layout and modules.
+  services, hooks per domain, layout and modules. Behaviour that differs per app belongs there, never in a
+  differing copy of a shared file.
 
-Drift found when the check was added (2026-11-25), all fixes that landed in one repo only:
-UI `export-csv-button.tsx`, `reason-dialog.tsx`, `maps/google-map.tsx`, `lib/export-csv.ts` (GAP-076
-export of every page is vendor-only); contracts `types/{auth,dashboard,finance,orders,washes}.ts`;
-`pg/sql.ts` (pool size 3 here vs 1 there); `prettyPhone` (multi-country GAP-013 only in vendor);
-labels `PAYOUT_STATUS`, `AUDIT_ENTITY`; `schema.ts` `MockDatabase` (GAP-095 read receipts);
-`router.ts` `HandlerContext` / `pg/router.ts` `PgAdminContext` (the portal's dead admin copy predates
-GAP-012); `throttle.ts` (GAP-064 variants); `pg/auth.ts` `rememberToken`; `pg/entities.ts` `PHONE`,
-`BRANCH_COLS`, `TRANSACTION_COLS`, `PAYOUT_COLS`; `pg/push.ts` `recipientsOf` (GAP-050 vs GAP-012/095).
+Drift found when the check was added (2026-11-25, 19 entries) was reconciled on 2026-11-26 by taking the newest
+behaviour of each side: from the portal — GAP-076 export of every page (`export-csv-button.tsx` `fetchPage`,
+`lib/export-csv.ts` `fetchAllPages`; this app's lists don't pass `fetchPage` yet, so they still export the loaded
+page), `reason-dialog.tsx` «رجوع», typed Leaflet fallback in `maps/google-map.tsx`, multi-country phones (GAP-013,
+`shared/phone.ts`, `PHONE` SQL), `Branch.timezone` + `BRANCH_COLS`, `pg/sql.ts` with the GAP-027 tenant scope
+(inactive here) and **pool size 1**, `loginThrottle` buckets, GAP-050 employee recipients in `pg/push.ts`; from this
+app — admin-session / currency / country contract fields (`types/{auth,dashboard,finance,orders,washes}.ts`,
+`TRANSACTION_COLS`, `PAYOUT_COLS`), `clientIp` (GAP-064: platform header or `TRUSTED_CLIENT_IP_HEADER`, never
+`x-forwarded-for`), `rememberToken`, GAP-012/095 admin recipients in `pg/push.ts`, `MockDatabase.notifications[].readBy`
+(plus the portal's `vendorNotificationReads`), labels `PAYOUT_STATUS` «مفتوحة / محصّلة» and `AUDIT_ENTITY.payouts`
+«تسوية عمولة».

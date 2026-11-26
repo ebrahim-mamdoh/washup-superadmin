@@ -16,10 +16,6 @@ function attempts(): Map<string, number[]> {
   return g[KEY];
 }
 
-export function isLoginPath(segments: string[]): boolean {
-  return segments.length === 3 && segments[1] === "auth" && (segments[2] === "login" || segments[2] === "forgot-password");
-}
-
 /**
  * The caller's IP from a header only the hosting platform sets (GAP-064): on Vercel
  * `x-vercel-forwarded-for` (then `x-real-ip`), both written by Vercel's edge. Elsewhere only the header
@@ -33,9 +29,16 @@ export function clientIp(req: Request): string {
   return (trusted && first(trusted)) || "local";
 }
 
-/** Records an attempt; returns 0 when allowed, else the seconds to wait. */
-export function loginThrottle(req: Request): number {
-  const ip = clientIp(req);
+export function isLoginPath(segments: string[]): boolean {
+  return segments.length === 3 && segments[1] === "auth" && (segments[2] === "login" || segments[2] === "forgot-password");
+}
+
+/**
+ * Records an attempt; returns 0 when allowed, else the seconds to wait.
+ * `bucket` keeps separate budgets (sign-in vs. application lookups) for the same IP.
+ */
+export function loginThrottle(req: Request, bucket = "login"): number {
+  const ip = `${bucket}:${clientIp(req)}`;
   const at = Date.now();
   const map = attempts();
   const recent = (map.get(ip) ?? []).filter((t) => at - t < WINDOW_MS);

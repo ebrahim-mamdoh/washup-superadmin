@@ -10,11 +10,14 @@ import type { AdminNotification } from "@/types/notifications";
 import type { Offer } from "@/types/offers";
 import type { Order } from "@/types/orders";
 import type { Review } from "@/types/reviews";
+import type { VendorNotification } from "@/types/vendor/insights";
+import type { DayClosing } from "@/types/vendor/team";
 import type { Branch, Business, Staff, WashService } from "@/types/washes";
 import type postgres from "postgres";
 
 import { MockApiError } from "../http";
-import { prettyPhone } from "../shared/phone";
+import { prettyPhone, toE164 } from "../shared/phone";
+import type { Shift } from "../schema";
 import { ISO, type Q } from "./sql";
 
 /**
@@ -26,7 +29,8 @@ import { ISO, type Q } from "./sql";
  * on each function); `tail` is an optional `order by … limit …` fragment.
  *
  * Differences between storage and contract handled here:
- * - phones are E.164 in the database (`+201…`) and `+20 1XX XXX XXXX` in the API;
+ * - phones are E.164 in the database (`+201…`, `+9665…`) and `+20 1XX XXX XXXX` /
+ *   `+966 50 123 4567` in the API (GAP-013: any country of `public.countries`);
  * - nullable FKs the contract types as `string` come back as "" (staff.branch_id
  *   for owners, review.service_id, payment.collected_by, note authors);
  * - nested lists (order items/timeline/notes, branch hours/amenities/blocked
@@ -37,10 +41,16 @@ type Frag = postgres.Fragment;
 
 /** E.164 → the API display format (`+20 120 000 0007`, `+20 2 2555 0142`; same as the mock `prettyPhone`). */
 export const apiPhone = (p: string | null): string => (p ? prettyPhone(p) : "");
+/**
+ * Any phone input → E.164. National numbers take `dialCode` (the branch's / business's country,
+ * e.g. "+966"); Egypt when omitted, as before. International input (+…, 00…) keeps its own code.
+ */
+export const e164 = (p: string, dialCode?: string): string => toE164(p, dialCode);
 
 /** SQL for `apiPhone(col)`: the national number (see `nationalPhone`) in `prettyPhone`'s groups. */
 export const PHONE = (col: string) =>
-  `(select case when d = '' then ''
+  `(select case when ${col} like '+%' and ${col} not like '+20%' then ${col}
+                when d = '' then ''
                 when length(d) = 10 and left(d, 1) = '1' then '+20 ' || substr(d, 1, 3) || ' ' || substr(d, 4, 3) || ' ' || substr(d, 7)
                 when length(d) = 9 and left(d, 1) in ('2', '3') then '+20 ' || substr(d, 1, 1) || ' ' || substr(d, 2, 4) || ' ' || substr(d, 6)
                 when length(d) >= 8 then '+20 ' || substr(d, 1, 2) || ' ' || substr(d, 3, 3) || ' ' || substr(d, 6)
@@ -70,6 +80,8 @@ export const businessById = (q: Q, id: string, label: string | null = "المغ�
 // ── Branches (alias br) ──────────────────────────────────────────────────────
 
 export const BRANCH_COLS = `br.id, br.business_id as "businessId", br.name, br.area_id as area, br.address, br.lat, br.lng,
+  coalesce((select c.timezone from public.areas a join public.countries c on c.code = a.country_code where a.id = br.area_id),
+           'Africa/Cairo') as timezone,
   ${PHONE("br.phone")} as phone,
   coalesce((select json_agg(ba.amenity_id order by ba.amenity_id) from public.branch_amenities ba where ba.branch_id = br.id), '[]') as amenities,
   br.capacity, br.active, br.featured,
@@ -181,7 +193,25 @@ export const APPLICATION_COLS = `ap.id, ap.business_name as "businessName", ap.o
   ap.status, ap.review_note as "reviewNote", ap.submitted_at as "submittedAt", ap.reviewed_at as "reviewedAt", ap.business_id as "businessId"`;
 export const applicationsWhere = (q: Q, cond: Frag, tail?: Frag) => select<WashApplication>(q, APPLICATION_COLS, "public.wash_applications ap", cond, tail);
 
-// ── Platform people & activity (admins a, audit al, notifications an) ──
+// ── Team (shifts sh, day closings dc) ────────────────────────────────────────
+
+export const SHIFT_COLS = `sh.id, sh.staff_id as "staffId", sh.branch_id as "branchId", sh.scheduled_start as "scheduledStart",
+  sh.scheduled_end as "scheduledEnd", sh.actual_start as "actualStart", sh.actual_end as "actualEnd",
+  sh.orders_completed as "ordersCompleted", sh.cash_payments as "cashPayments", sh.card_payments as "cardPayments",
+  sh.expected_cash as "expectedCash", sh.actual_cash as "actualCash", sh.difference, sh.difference_reason as reason,
+  sh.review_status as "reviewStatus", sh.review_note as "reviewNote", sh.reviewed_by as "reviewedBy"`;
+export const shiftsWhere = (q: Q, cond: Frag, tail?: Frag) => select<Shift>(q, SHIFT_COLS, "public.staff_shifts sh", cond, tail);
+
+export const DAY_CLOSING_COLS = `dc.id, dc.branch_id as "branchId", dc.date,
+  json_build_object('cash', dc.expected_cash, 'card', dc.expected_card, 'online', dc.expected_online,
+    'total', dc.expected_cash + dc.expected_card + dc.expected_online) as expected,
+  json_build_object('cash', dc.actual_cash, 'card', dc.actual_card, 'online', dc.actual_online,
+    'total', dc.actual_cash + dc.actual_card + dc.actual_online) as actual,
+  dc.difference, dc.reason, dc.orders_locked as "ordersLocked", dc.closed_by as "closedBy",
+  coalesce((select s.name from public.staff s where s.id = dc.closed_by), '') as "closedByName", dc.closed_at as "closedAt"`;
+export const dayClosingsWhere = (q: Q, cond: Frag, tail?: Frag) => select<DayClosing>(q, DAY_CLOSING_COLS, "public.day_closings dc", cond, tail);
+
+// ── Platform people & activity (admins a, audit al, notifications an / vn) ──
 
 export const ADMIN_COLS = `a.id, a.name, a.email, a.role, a.status, a.last_login_at as "lastLoginAt", a.created_at as "createdAt"`;
 export const adminsWhere = (q: Q, cond: Frag, tail?: Frag) => select<AdminUser>(q, ADMIN_COLS, "public.admin_users a", cond, tail);
@@ -195,3 +225,8 @@ export const auditWhere = (q: Q, cond: Frag, tail?: Frag) => select<AuditLog>(q,
 export const ADMIN_NOTIFICATION_COLS = `an.id, an.type, an.title, an.body, an.href, an.read, an.created_at as "createdAt"`;
 export const adminNotificationsWhere = (q: Q, cond: Frag, tail?: Frag) =>
   select<AdminNotification>(q, ADMIN_NOTIFICATION_COLS, "public.admin_notifications an", cond, tail);
+
+export const VENDOR_NOTIFICATION_COLS = `vn.id, vn.business_id as "businessId", vn.branch_id as "branchId", vn.type, vn.title, vn.body, vn.href,
+  vn.read, vn.created_at as "createdAt"`;
+export const vendorNotificationsWhere = (q: Q, cond: Frag, tail?: Frag) =>
+  select<VendorNotification>(q, VENDOR_NOTIFICATION_COLS, "public.vendor_notifications vn", cond, tail);
